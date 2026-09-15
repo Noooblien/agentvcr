@@ -1,4 +1,4 @@
-package storage_test
+package tests_test
 
 import (
 	"os"
