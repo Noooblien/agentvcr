@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Noooblien/agentvcr/pkg/diff"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/storage"
@@ -91,6 +92,40 @@ func main() {
 		fmt.Printf("🌱 [AgentVCR] Created execution branch '%s' at step %d\n", forked.ID, *step)
 		fmt.Printf("Ready for mutation and targeted replay.\n")
 
+	case "diff":
+		diffCmd := flag.NewFlagSet("diff", flag.ExitOnError)
+		baseID := diffCmd.String("base", "", "Base trace session ID")
+		targetID := diffCmd.String("target", "", "Target/forked trace session ID")
+		_ = diffCmd.Parse(os.Args[2:])
+
+		if *baseID == "" || *targetID == "" {
+			log.Fatal("Usage: agentvcr diff -base <base_id> -target <target_id>")
+		}
+
+		baseSession, err := store.LoadSession(*baseID)
+		if err != nil {
+			log.Fatalf("Error loading base session: %v", err)
+		}
+		targetSession, err := store.LoadSession(*targetID)
+		if err != nil {
+			log.Fatalf("Error loading target session: %v", err)
+		}
+
+		res := diff.CompareSessions(baseSession, targetSession)
+		fmt.Printf("🔍 [AgentVCR] Trajectory Comparison: %s ➔ %s\n", *baseID, *targetID)
+		fmt.Printf("   Event Count:     %d vs %d\n", res.BaseEventCount, res.TargetEventCount)
+		fmt.Printf("   Token Delta:     %+d tokens\n", res.TokenDelta)
+		fmt.Printf("   Cost Delta:      $%+.4f USD\n", res.CostDeltaUSD)
+		fmt.Printf("   Duration Delta:  %+d ms\n", res.DurationDeltaMs)
+		if res.DivergenceStep == -1 {
+			fmt.Printf("   Status:          Identical execution trajectories.\n")
+		} else {
+			fmt.Printf("   ⚡ Divergence:   Step %d\n", res.DivergenceStep)
+			if res.DivergentDetails != nil {
+				fmt.Printf("   Reason:          %s\n", res.DivergentDetails.Reason)
+			}
+		}
+
 	default:
 		printHelp()
 	}
@@ -102,8 +137,10 @@ func printHelp() {
 	fmt.Println("  record  Start transparent reverse-proxy recording session")
 	fmt.Println("  view    Inspect recorded agent trajectory and token events")
 	fmt.Println("  fork    Branch an execution trace at an exact step for re-testing")
+	fmt.Println("  diff    Compare two trajectories to pinpoint execution divergence")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
 	fmt.Println("  agentvcr fork -id trace_1760800000 -step 4")
+	fmt.Println("  agentvcr diff -base trace_1 -target trace_1_fork")
 }

@@ -78,8 +78,10 @@ client = OpenAI(
 - [x] High-performance reverse-proxy event streaming engine
 - [x] Monotonic trajectory storage & JSON serialization
 - [x] Step-level execution branching (`fork`)
-- [ ] Terminal TUI viewer (`ratatui` or `bubbletea`)
-- [ ] Model Context Protocol (MCP) tool-call interceptor
+- [x] Model Context Protocol (MCP) tool-call interceptor
+- [x] Token consumption & cost metrics engine
+- [x] Trajectory diffing & step divergence detection (`diff`)
+- [ ] Terminal TUI viewer (`bubbletea`)
 - [ ] Docker container filesystem snapshotting (Copy-on-Write)
 
 ---
