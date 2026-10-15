@@ -9,12 +9,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/diff"
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
 	"github.com/Noooblien/agentvcr/pkg/storage"
+	"github.com/Noooblien/agentvcr/pkg/trace"
 	"github.com/Noooblien/agentvcr/pkg/tui"
 )
 
@@ -247,6 +249,28 @@ func main() {
 			fmt.Printf("   Restored To: %s\n", *restoreTo)
 		}
 
+	case "cluster":
+		sessions, err := store.ListSessions()
+		if err != nil {
+			log.Fatalf("Failed to list sessions: %v", err)
+		}
+
+		var loadedSessions []*trace.Session
+		for _, sID := range sessions {
+			s, err := store.LoadSession(sID)
+			if err == nil {
+				loadedSessions = append(loadedSessions, s)
+			}
+		}
+
+		if len(loadedSessions) == 0 {
+			fmt.Println("No recorded trace sessions found in ./.vcr_traces to analyze.")
+			return
+		}
+
+		report := cluster.GenerateFleetReport(loadedSessions)
+		fmt.Print(cluster.RenderASCIIHeatmap(report))
+
 	default:
 		printHelp()
 	}
@@ -262,6 +286,7 @@ func printHelp() {
 	fmt.Println("  eval      Run deterministic assertion suites and SLAs on trajectories")
 	fmt.Println("  play      Interactive visual terminal playback of agent execution")
 	fmt.Println("  snapshot  Capture or restore deterministic workspace filesystem state")
+	fmt.Println("  cluster   Fleet-wide trajectory pattern clustering & usage heatmaps")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -270,4 +295,5 @@ func printHelp() {
 	fmt.Println("  agentvcr eval -id trace_1 -no-errors -max-tokens 5000")
 	fmt.Println("  agentvcr play -id trace_1 -delay 100")
 	fmt.Println("  agentvcr snapshot -dir ./workspace -step 3")
+	fmt.Println("  agentvcr cluster")
 }

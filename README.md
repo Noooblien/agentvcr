@@ -84,7 +84,8 @@ client = OpenAI(
 - [x] Deterministic trajectory assertion & CI/CD SLA engine (`eval`)
 - [x] Interactive visual terminal playback engine (`play`)
 - [x] Deterministic workspace filesystem snapshotting & rollback (`snapshot`)
-- [ ] Distributed trace clustering and multi-agent aggregate heatmaps
+- [x] Distributed trace clustering and multi-agent aggregate heatmaps (`cluster`)
+- [ ] Multi-turn fuzzing & adversarial prompt mutation harness (`fuzz`)
 
 ---
 
