@@ -81,6 +81,7 @@ client = OpenAI(
 - [x] Model Context Protocol (MCP) tool-call interceptor
 - [x] Token consumption & cost metrics engine
 - [x] Trajectory diffing & step divergence detection (`diff`)
+- [x] Deterministic trajectory assertion & CI/CD SLA engine (`eval`)
 - [ ] Terminal TUI viewer (`bubbletea`)
 - [ ] Docker container filesystem snapshotting (Copy-on-Write)
 

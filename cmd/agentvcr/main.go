@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Noooblien/agentvcr/pkg/diff"
+	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/storage"
@@ -126,6 +128,79 @@ func main() {
 			}
 		}
 
+	case "eval":
+		evalCmd := flag.NewFlagSet("eval", flag.ExitOnError)
+		sessionID := evalCmd.String("id", "", "Trace session ID to evaluate")
+		rulesPath := evalCmd.String("rules", "", "Path to JSON file containing assertion rules (optional)")
+		maxTokens := evalCmd.Int("max-tokens", 0, "Max allowed token budget")
+		maxCost := evalCmd.Float64("max-cost", 0.0, "Max allowed USD cost")
+		noErrors := evalCmd.Bool("no-errors", false, "Assert zero tool execution errors")
+		_ = evalCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr eval -id <session_id> [-rules suite.json] [-max-tokens 5000] [-max-cost 0.05] [-no-errors]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session: %v", err)
+		}
+
+		var rules []eval.AssertionRule
+		if *rulesPath != "" {
+			data, err := os.ReadFile(*rulesPath)
+			if err != nil {
+				log.Fatalf("Failed to read rules file %s: %v", *rulesPath, err)
+			}
+			if err := json.Unmarshal(data, &rules); err != nil {
+				log.Fatalf("Invalid rules JSON in %s: %v", *rulesPath, err)
+			}
+		}
+
+		if *maxTokens > 0 {
+			rules = append(rules, eval.AssertionRule{
+				Type:      eval.RuleMaxTokens,
+				MaxTokens: *maxTokens,
+			})
+		}
+		if *maxCost > 0.0 {
+			rules = append(rules, eval.AssertionRule{
+				Type:       eval.RuleMaxCost,
+				MaxCostUSD: *maxCost,
+			})
+		}
+		if *noErrors {
+			rules = append(rules, eval.AssertionRule{
+				Type: eval.RuleNoErrors,
+			})
+		}
+
+		if len(rules) == 0 {
+			log.Fatal("No evaluation assertions specified. Provide -rules, -max-tokens, -max-cost, or -no-errors")
+		}
+
+		report, err := eval.Evaluate(session, rules)
+		if err != nil {
+			log.Fatalf("Evaluation failed: %v", err)
+		}
+
+		fmt.Printf("🧪 [AgentVCR] Trajectory Assertion Suite for %s\n", *sessionID)
+		fmt.Printf("   Assertions Evaluated: %d\n", report.TotalRules)
+		fmt.Printf("   Passed: %d, Failed: %d\n\n", report.Passed, report.Failed)
+
+		for i, res := range report.Results {
+			icon := "✅"
+			if !res.Passed {
+				icon = "❌"
+			}
+			fmt.Printf("   %s [%d] %s: %s\n", icon, i+1, res.RuleType, res.Details)
+		}
+
+		if !report.AllPassed {
+			os.Exit(1)
+		}
+		fmt.Printf("\n✨ All assertions PASSED. Trajectory meets SLA.\n")
+
 	default:
 		printHelp()
 	}
@@ -138,9 +213,11 @@ func printHelp() {
 	fmt.Println("  view    Inspect recorded agent trajectory and token events")
 	fmt.Println("  fork    Branch an execution trace at an exact step for re-testing")
 	fmt.Println("  diff    Compare two trajectories to pinpoint execution divergence")
+	fmt.Println("  eval    Run deterministic assertion suites and SLAs on trajectories")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
 	fmt.Println("  agentvcr fork -id trace_1760800000 -step 4")
 	fmt.Println("  agentvcr diff -base trace_1 -target trace_1_fork")
+	fmt.Println("  agentvcr eval -id trace_1 -no-errors -max-tokens 5000")
 }
