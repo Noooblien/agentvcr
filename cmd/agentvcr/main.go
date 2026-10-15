@@ -13,6 +13,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
+	"github.com/Noooblien/agentvcr/pkg/snapshot"
 	"github.com/Noooblien/agentvcr/pkg/storage"
 	"github.com/Noooblien/agentvcr/pkg/tui"
 )
@@ -220,6 +221,32 @@ func main() {
 		player := tui.NewPlayer(os.Stdout)
 		player.PlaySession(session, time.Duration(*delayMs)*time.Millisecond)
 
+	case "snapshot":
+		snapCmd := flag.NewFlagSet("snapshot", flag.ExitOnError)
+		dir := snapCmd.String("dir", ".", "Directory path to snapshot")
+		sessionID := snapCmd.String("id", "manual", "Session ID associate with snapshot")
+		step := snapCmd.Int("step", 0, "Execution step index")
+		restoreTo := snapCmd.String("restore", "", "Target directory path to restore snapshot to")
+		_ = snapCmd.Parse(os.Args[2:])
+
+		mgr := snapshot.NewManager()
+		snap, err := mgr.CaptureWorkspace(*sessionID, *step, *dir)
+		if err != nil {
+			log.Fatalf("Failed to capture workspace snapshot: %v", err)
+		}
+
+		fmt.Printf("📸 [AgentVCR] Workspace Snapshot Captured\n")
+		fmt.Printf("   Snapshot ID: %s\n", snap.ID)
+		fmt.Printf("   Root Path:   %s\n", snap.RootPath)
+		fmt.Printf("   Files:       %d tracked entries\n", len(snap.Entries))
+
+		if *restoreTo != "" {
+			if err := mgr.RestoreWorkspace(snap.ID, *restoreTo); err != nil {
+				log.Fatalf("Failed to restore workspace: %v", err)
+			}
+			fmt.Printf("   Restored To: %s\n", *restoreTo)
+		}
+
 	default:
 		printHelp()
 	}
@@ -228,12 +255,13 @@ func main() {
 func printHelp() {
 	fmt.Println("AgentVCR — Deterministic Flight Recorder & Time-Travel Debugger for AI Agents")
 	fmt.Println("\nCommands:")
-	fmt.Println("  record  Start transparent reverse-proxy recording session")
-	fmt.Println("  view    Inspect recorded agent trajectory and token events")
-	fmt.Println("  fork    Branch an execution trace at an exact step for re-testing")
-	fmt.Println("  diff    Compare two trajectories to pinpoint execution divergence")
-	fmt.Println("  eval    Run deterministic assertion suites and SLAs on trajectories")
-	fmt.Println("  play    Interactive visual terminal playback of agent execution")
+	fmt.Println("  record    Start transparent reverse-proxy recording session")
+	fmt.Println("  view      Inspect recorded agent trajectory and token events")
+	fmt.Println("  fork      Branch an execution trace at an exact step for re-testing")
+	fmt.Println("  diff      Compare two trajectories to pinpoint execution divergence")
+	fmt.Println("  eval      Run deterministic assertion suites and SLAs on trajectories")
+	fmt.Println("  play      Interactive visual terminal playback of agent execution")
+	fmt.Println("  snapshot  Capture or restore deterministic workspace filesystem state")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -241,4 +269,5 @@ func printHelp() {
 	fmt.Println("  agentvcr diff -base trace_1 -target trace_1_fork")
 	fmt.Println("  agentvcr eval -id trace_1 -no-errors -max-tokens 5000")
 	fmt.Println("  agentvcr play -id trace_1 -delay 100")
+	fmt.Println("  agentvcr snapshot -dir ./workspace -step 3")
 }

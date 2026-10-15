@@ -83,7 +83,8 @@ client = OpenAI(
 - [x] Trajectory diffing & step divergence detection (`diff`)
 - [x] Deterministic trajectory assertion & CI/CD SLA engine (`eval`)
 - [x] Interactive visual terminal playback engine (`play`)
-- [ ] Docker container filesystem snapshotting (Copy-on-Write)
+- [x] Deterministic workspace filesystem snapshotting & rollback (`snapshot`)
+- [ ] Distributed trace clustering and multi-agent aggregate heatmaps
 
 ---
 
