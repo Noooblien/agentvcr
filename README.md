@@ -82,7 +82,7 @@ client = OpenAI(
 - [x] Token consumption & cost metrics engine
 - [x] Trajectory diffing & step divergence detection (`diff`)
 - [x] Deterministic trajectory assertion & CI/CD SLA engine (`eval`)
-- [ ] Terminal TUI viewer (`bubbletea`)
+- [x] Interactive visual terminal playback engine (`play`)
 - [ ] Docker container filesystem snapshotting (Copy-on-Write)
 
 ---

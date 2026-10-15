@@ -14,6 +14,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/storage"
+	"github.com/Noooblien/agentvcr/pkg/tui"
 )
 
 func main() {
@@ -201,6 +202,24 @@ func main() {
 		}
 		fmt.Printf("\n✨ All assertions PASSED. Trajectory meets SLA.\n")
 
+	case "play":
+		playCmd := flag.NewFlagSet("play", flag.ExitOnError)
+		sessionID := playCmd.String("id", "", "Trace Session ID to replay")
+		delayMs := playCmd.Int("delay", 250, "Playback delay between steps in milliseconds")
+		_ = playCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr play -id <session_id> [-delay 250]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session: %v", err)
+		}
+
+		player := tui.NewPlayer(os.Stdout)
+		player.PlaySession(session, time.Duration(*delayMs)*time.Millisecond)
+
 	default:
 		printHelp()
 	}
@@ -214,10 +233,12 @@ func printHelp() {
 	fmt.Println("  fork    Branch an execution trace at an exact step for re-testing")
 	fmt.Println("  diff    Compare two trajectories to pinpoint execution divergence")
 	fmt.Println("  eval    Run deterministic assertion suites and SLAs on trajectories")
+	fmt.Println("  play    Interactive visual terminal playback of agent execution")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
 	fmt.Println("  agentvcr fork -id trace_1760800000 -step 4")
 	fmt.Println("  agentvcr diff -base trace_1 -target trace_1_fork")
 	fmt.Println("  agentvcr eval -id trace_1 -no-errors -max-tokens 5000")
+	fmt.Println("  agentvcr play -id trace_1 -delay 100")
 }
