@@ -89,7 +89,8 @@ client = OpenAI(
 - [x] Real-time streaming telemetry dashboard & HTTP API (`serve`)
 - [x] Distributed multi-node agent mesh tracing with OpenTelemetry export (`export`)
 - [x] Cryptographic trajectory signing & immutable tamper-proof attestation (`verify`)
-- [ ] WASM-sandboxed mock tool synthesizers & offline synthetic simulator (`sim`)
+- [x] WASM-sandboxed mock tool synthesizers & offline synthetic simulator (`sim`)
+- [ ] Agentic memory regression tester & long-horizon recall benchmarks (`bench`)
 
 ---
 

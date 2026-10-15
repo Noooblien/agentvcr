@@ -18,6 +18,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
+	"github.com/Noooblien/agentvcr/pkg/sim"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
 	"github.com/Noooblien/agentvcr/pkg/storage"
 	"github.com/Noooblien/agentvcr/pkg/trace"
@@ -452,6 +453,90 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "sim":
+		simCmd := flag.NewFlagSet("sim", flag.ExitOnError)
+		mode := simCmd.String("mode", "run", "Simulation mode: 'run', 'synthesize', or 'list'")
+		sessionID := simCmd.String("id", "", "Trace Session ID")
+		mocksPath := simCmd.String("mocks", "", "Path to custom mock rules JSON file")
+		outPath := simCmd.String("out", "", "Output path for synthesized rules or simulated session ID")
+		_ = simCmd.Parse(os.Args[2:])
+
+		if *mode == "list" {
+			fmt.Println("🤖 [AgentVCR] Built-in Offline Mock Tool Providers:")
+			fmt.Println("  - bash_sandbox:  Deterministic shell sandbox (echo, pwd, whoami, date)")
+			fmt.Println("  - memory_kv:     Stateful in-memory key-value store (get, set, delete)")
+			fmt.Println("  - mock_search:   Deterministic synthetic web search provider")
+			return
+		}
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr sim -mode <run|synthesize|list> -id <session_id> [-mocks mocks.json] [-out <dest>]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		if *mode == "synthesize" {
+			synth := sim.NewSynthesizer()
+			rules, err := synth.SynthesizeFromSession(session)
+			if err != nil {
+				log.Fatalf("Synthesis failed: %v", err)
+			}
+			jsonBytes, _ := synth.ExportRulesJSON(rules)
+			dest := *outPath
+			if dest == "" {
+				dest = fmt.Sprintf("./.vcr_traces/%s.mocks.json", *sessionID)
+			}
+			if err := os.WriteFile(dest, jsonBytes, 0644); err != nil {
+				log.Fatalf("Failed to write mock rules to %s: %v", dest, err)
+			}
+			fmt.Printf("🎭 [AgentVCR] Synthesized %d mock tool rules from %s\n", len(rules), *sessionID)
+			fmt.Printf("   Saved To: %s\n", dest)
+			return
+		}
+
+		// Mode: run
+		var customRules []sim.MockRule
+		if *mocksPath != "" {
+			data, err := os.ReadFile(*mocksPath)
+			if err != nil {
+				log.Fatalf("Failed to read mocks file %s: %v", *mocksPath, err)
+			}
+			synth := sim.NewSynthesizer()
+			customRules, err = synth.ImportRulesJSON(data)
+			if err != nil {
+				log.Fatalf("Failed to parse mock rules: %v", err)
+			}
+		}
+
+		newID := *outPath
+		if newID == "" {
+			newID = fmt.Sprintf("%s_sim_%d", *sessionID, time.Now().Unix())
+		}
+
+		simulator := sim.NewSimulator(customRules)
+		simSession, report, err := simulator.SimulateSession(session, newID)
+		if err != nil {
+			log.Fatalf("Offline simulation failed: %v", err)
+		}
+
+		if err := store.SaveSession(simSession); err != nil {
+			log.Fatalf("Failed to save simulated session: %v", err)
+		}
+
+		fmt.Printf("🧪 [AgentVCR] Offline Trajectory Simulation Complete\n")
+		fmt.Printf("   Simulated Session ID: %s\n", simSession.ID)
+		fmt.Printf("   Base Session ID:      %s\n", report.BaseSessionID)
+		fmt.Printf("   Total Events:         %d\n", report.TotalEvents)
+		fmt.Printf("   Tool Calls Simulated: %d\n", report.ToolCallsSimulated)
+		fmt.Printf("   Rules Matched:        %d\n", report.RulesMatched)
+		fmt.Printf("   Fallbacks Used:       %d\n", report.FallbacksUsed)
+		fmt.Printf("   Simulated Latency:    %d ms\n", report.SimulatedLatencyMs)
+		fmt.Printf("   Errors Injected:      %d\n", report.ErrorsInjected)
+		fmt.Printf("   Trace File:           ./.vcr_traces/%s.vcr.json\n", simSession.ID)
+
 	default:
 		printHelp()
 	}
@@ -473,6 +558,7 @@ func printHelp() {
 	fmt.Println("  export    Export session traces to OpenTelemetry (OTel / OTLP JSON)")
 	fmt.Println("  sign      Cryptographically sign trajectory with Ed25519 digital signature")
 	fmt.Println("  verify    Validate cryptographic attestation & verify zero tampering")
+	fmt.Println("  sim       Offline mock tool synthesizer and deterministic synthetic simulator")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -487,4 +573,5 @@ func printHelp() {
 	fmt.Println("  agentvcr export -id trace_1 -format otlp -out trace_otel.json")
 	fmt.Println("  agentvcr sign -id trace_1 -out trace_1.cert.json")
 	fmt.Println("  agentvcr verify -id trace_1 -cert trace_1.cert.json")
+	fmt.Println("  agentvcr sim -mode run -id trace_1 -mocks mocks.json")
 }
