@@ -86,7 +86,8 @@ client = OpenAI(
 - [x] Deterministic workspace filesystem snapshotting & rollback (`snapshot`)
 - [x] Distributed trace clustering and multi-agent aggregate heatmaps (`cluster`)
 - [x] Multi-turn fuzzing & adversarial prompt mutation harness (`fuzz`)
-- [ ] Real-time WebSocket streaming dashboard & live trajectory telemetry (`serve`)
+- [x] Real-time streaming telemetry dashboard & HTTP API (`serve`)
+- [ ] Distributed multi-node agent mesh tracing with OpenTelemetry export (`export`)
 
 ---
 

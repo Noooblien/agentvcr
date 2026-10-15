@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Noooblien/agentvcr/pkg/cluster"
+	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/diff"
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
@@ -317,6 +318,21 @@ func main() {
 		}
 		fmt.Printf("Saved %d mutated trajectories to ./.vcr_traces for replay and SLA verification.\n", len(fuzzedSessions))
 
+	case "serve":
+		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
+		port := serveCmd.Int("port", 9090, "HTTP dashboard port")
+		_ = serveCmd.Parse(os.Args[2:])
+
+		srv := dashboard.NewServer(store)
+		fmt.Printf("📡 [AgentVCR] Real-Time Telemetry Dashboard running at http://localhost:%d\n", *port)
+		fmt.Printf("   Endpoints:\n")
+		fmt.Printf("     - UI Dashboard: http://localhost:%d/\n", *port)
+		fmt.Printf("     - Sessions API: http://localhost:%d/api/sessions\n", *port)
+		fmt.Printf("     - Fleet Metrics: http://localhost:%d/api/metrics\n", *port)
+		fmt.Printf("     - Live SSE Stream: http://localhost:%d/api/live/stream\n\n", *port)
+
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), srv.Handler()))
+
 	default:
 		printHelp()
 	}
@@ -334,6 +350,7 @@ func printHelp() {
 	fmt.Println("  snapshot  Capture or restore deterministic workspace filesystem state")
 	fmt.Println("  cluster   Fleet-wide trajectory pattern clustering & usage heatmaps")
 	fmt.Println("  fuzz      Adversarial prompt injection & fault mutation harness")
+	fmt.Println("  serve     Host real-time streaming telemetry dashboard & API")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -344,4 +361,5 @@ func printHelp() {
 	fmt.Println("  agentvcr snapshot -dir ./workspace -step 3")
 	fmt.Println("  agentvcr cluster")
 	fmt.Println("  agentvcr fuzz -id trace_1 -strategy prompt_injection -count 3")
+	fmt.Println("  agentvcr serve --port 9090")
 }
