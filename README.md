@@ -88,7 +88,8 @@ client = OpenAI(
 - [x] Multi-turn fuzzing & adversarial prompt mutation harness (`fuzz`)
 - [x] Real-time streaming telemetry dashboard & HTTP API (`serve`)
 - [x] Distributed multi-node agent mesh tracing with OpenTelemetry export (`export`)
-- [ ] Cryptographic trajectory signing & immutable tamper-proof attestation (`verify`)
+- [x] Cryptographic trajectory signing & immutable tamper-proof attestation (`verify`)
+- [ ] WASM-sandboxed mock tool synthesizers & offline synthetic simulator (`sim`)
 
 ---
 

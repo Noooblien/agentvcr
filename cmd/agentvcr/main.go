@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Noooblien/agentvcr/pkg/attest"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/diff"
@@ -374,6 +375,83 @@ func main() {
 			fmt.Println(string(outputBytes))
 		}
 
+	case "sign":
+		signCmd := flag.NewFlagSet("sign", flag.ExitOnError)
+		sessionID := signCmd.String("id", "", "Trace Session ID to cryptographically sign")
+		certPath := signCmd.String("out", "", "Output path for attestation certificate (default: <session_id>.cert.json)")
+		_ = signCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr sign -id <session_id> [-out cert.json]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		keypair, err := attest.GenerateKeyPair()
+		if err != nil {
+			log.Fatalf("Keypair generation failed: %v", err)
+		}
+
+		cert, err := attest.SignTrajectory(session, keypair.PrivateKey)
+		if err != nil {
+			log.Fatalf("Failed to sign trajectory: %v", err)
+		}
+
+		certBytes, _ := json.MarshalIndent(cert, "", "  ")
+		dest := *certPath
+		if dest == "" {
+			dest = fmt.Sprintf("./.vcr_traces/%s.cert.json", *sessionID)
+		}
+		if err := os.WriteFile(dest, certBytes, 0644); err != nil {
+			log.Fatalf("Failed to save certificate: %v", err)
+		}
+
+		fmt.Printf("🔏 [AgentVCR] Cryptographic Attestation Certificate Generated\n")
+		fmt.Printf("   Session:    %s\n", cert.SessionID)
+		fmt.Printf("   Root Hash:  %s\n", cert.RootHash)
+		fmt.Printf("   Public Key: %s\n", cert.PublicKey)
+		fmt.Printf("   Saved To:   %s\n", dest)
+
+	case "verify":
+		verifyCmd := flag.NewFlagSet("verify", flag.ExitOnError)
+		sessionID := verifyCmd.String("id", "", "Trace Session ID to verify")
+		certPath := verifyCmd.String("cert", "", "Path to attestation certificate file")
+		_ = verifyCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" || *certPath == "" {
+			log.Fatal("Usage: agentvcr verify -id <session_id> -cert <cert.json>")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		certBytes, err := os.ReadFile(*certPath)
+		if err != nil {
+			log.Fatalf("Failed to read certificate %s: %v", *certPath, err)
+		}
+
+		var cert attest.Certificate
+		if err := json.Unmarshal(certBytes, &cert); err != nil {
+			log.Fatalf("Invalid certificate JSON: %v", err)
+		}
+
+		result := attest.VerifyTrajectory(session, &cert)
+		fmt.Printf("🛡️  [AgentVCR] Attestation Verification for %s\n", *sessionID)
+		fmt.Printf("   Signature Valid:  %t\n", result.SignatureOK)
+		fmt.Printf("   Hash Chain Valid: %t\n", result.HashChainOK)
+		if result.Valid {
+			fmt.Printf("   Status:           ✅ PASS: Trajectory is cryptographically authentic.\n")
+		} else {
+			fmt.Printf("   Status:           ❌ FAIL: Trajectory has been tampered with!\n")
+			fmt.Printf("   Details:          %s\n", result.Details)
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -393,6 +471,8 @@ func printHelp() {
 	fmt.Println("  fuzz      Adversarial prompt injection & fault mutation harness")
 	fmt.Println("  serve     Host real-time streaming telemetry dashboard & API")
 	fmt.Println("  export    Export session traces to OpenTelemetry (OTel / OTLP JSON)")
+	fmt.Println("  sign      Cryptographically sign trajectory with Ed25519 digital signature")
+	fmt.Println("  verify    Validate cryptographic attestation & verify zero tampering")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -405,4 +485,6 @@ func printHelp() {
 	fmt.Println("  agentvcr fuzz -id trace_1 -strategy prompt_injection -count 3")
 	fmt.Println("  agentvcr serve --port 9090")
 	fmt.Println("  agentvcr export -id trace_1 -format otlp -out trace_otel.json")
+	fmt.Println("  agentvcr sign -id trace_1 -out trace_1.cert.json")
+	fmt.Println("  agentvcr verify -id trace_1 -cert trace_1.cert.json")
 }
