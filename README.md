@@ -85,7 +85,8 @@ client = OpenAI(
 - [x] Interactive visual terminal playback engine (`play`)
 - [x] Deterministic workspace filesystem snapshotting & rollback (`snapshot`)
 - [x] Distributed trace clustering and multi-agent aggregate heatmaps (`cluster`)
-- [ ] Multi-turn fuzzing & adversarial prompt mutation harness (`fuzz`)
+- [x] Multi-turn fuzzing & adversarial prompt mutation harness (`fuzz`)
+- [ ] Real-time WebSocket streaming dashboard & live trajectory telemetry (`serve`)
 
 ---
 

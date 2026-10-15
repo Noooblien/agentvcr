@@ -12,6 +12,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/diff"
 	"github.com/Noooblien/agentvcr/pkg/eval"
+	"github.com/Noooblien/agentvcr/pkg/fuzz"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
@@ -271,6 +272,51 @@ func main() {
 		report := cluster.GenerateFleetReport(loadedSessions)
 		fmt.Print(cluster.RenderASCIIHeatmap(report))
 
+	case "fuzz":
+		fuzzCmd := flag.NewFlagSet("fuzz", flag.ExitOnError)
+		sessionID := fuzzCmd.String("id", "", "Baseline trace session ID to fuzz")
+		strategy := fuzzCmd.String("strategy", "all", "Mutation strategy (prompt_injection, tool_fault, malformed_json, latency_spike, all)")
+		count := fuzzCmd.Int("count", 3, "Number of mutated trajectories to generate")
+		_ = fuzzCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr fuzz -id <session_id> [-strategy <strategy>] [-count 3]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		harness := fuzz.NewFuzzHarness(0)
+		var fuzzedSessions []*trace.Session
+		var reports []*fuzz.MutationReport
+
+		if *strategy == "all" {
+			fuzzedSessions, reports, err = harness.GenerateSuite(session, *count)
+		} else {
+			for i := 0; i < *count; i++ {
+				s, r, errFuzz := harness.FuzzSession(session, fuzz.MutationStrategy(*strategy))
+				if errFuzz == nil {
+					fuzzedSessions = append(fuzzedSessions, s)
+					reports = append(reports, r)
+				}
+			}
+		}
+
+		if err != nil || len(fuzzedSessions) == 0 {
+			log.Fatalf("Fuzzing failed or yielded no mutations: %v", err)
+		}
+
+		fmt.Printf("☣️  [AgentVCR] Adversarial Fuzzing Suite Generated for %s\n", *sessionID)
+		for i, rep := range reports {
+			_ = store.SaveSession(fuzzedSessions[i])
+			fmt.Printf("   [%d] Fuzzed Session: %s\n", i+1, rep.FuzzedSessionID)
+			fmt.Printf("       Strategy: %s | Step: %d\n", rep.Strategy, rep.MutatedStep)
+			fmt.Printf("       Detail:   %s\n\n", rep.Description)
+		}
+		fmt.Printf("Saved %d mutated trajectories to ./.vcr_traces for replay and SLA verification.\n", len(fuzzedSessions))
+
 	default:
 		printHelp()
 	}
@@ -287,6 +333,7 @@ func printHelp() {
 	fmt.Println("  play      Interactive visual terminal playback of agent execution")
 	fmt.Println("  snapshot  Capture or restore deterministic workspace filesystem state")
 	fmt.Println("  cluster   Fleet-wide trajectory pattern clustering & usage heatmaps")
+	fmt.Println("  fuzz      Adversarial prompt injection & fault mutation harness")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -296,4 +343,5 @@ func printHelp() {
 	fmt.Println("  agentvcr play -id trace_1 -delay 100")
 	fmt.Println("  agentvcr snapshot -dir ./workspace -step 3")
 	fmt.Println("  agentvcr cluster")
+	fmt.Println("  agentvcr fuzz -id trace_1 -strategy prompt_injection -count 3")
 }
