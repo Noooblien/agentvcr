@@ -87,7 +87,8 @@ client = OpenAI(
 - [x] Distributed trace clustering and multi-agent aggregate heatmaps (`cluster`)
 - [x] Multi-turn fuzzing & adversarial prompt mutation harness (`fuzz`)
 - [x] Real-time streaming telemetry dashboard & HTTP API (`serve`)
-- [ ] Distributed multi-node agent mesh tracing with OpenTelemetry export (`export`)
+- [x] Distributed multi-node agent mesh tracing with OpenTelemetry export (`export`)
+- [ ] Cryptographic trajectory signing & immutable tamper-proof attestation (`verify`)
 
 ---
 

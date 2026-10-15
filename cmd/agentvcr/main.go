@@ -14,6 +14,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/diff"
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
+	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
@@ -333,6 +334,46 @@ func main() {
 
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), srv.Handler()))
 
+	case "export":
+		exportCmd := flag.NewFlagSet("export", flag.ExitOnError)
+		sessionID := exportCmd.String("id", "", "Trace Session ID to export")
+		format := exportCmd.String("format", "otlp", "Export format (otlp or spans)")
+		outPath := exportCmd.String("out", "", "Output file path (default stdout)")
+		serviceName := exportCmd.String("service", "agentvcr", "OTel service name")
+		_ = exportCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr export -id <session_id> [-format otlp|spans] [-out trace.json] [-service agentvcr]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		exporter := otel.NewExporter(*serviceName)
+		var outputBytes []byte
+
+		if *format == "spans" {
+			spans := exporter.ExportToOTelSpans(session)
+			outputBytes, err = json.MarshalIndent(spans, "", "  ")
+		} else {
+			outputBytes, err = exporter.ExportOTLPJSON(session)
+		}
+
+		if err != nil {
+			log.Fatalf("Export failed: %v", err)
+		}
+
+		if *outPath != "" {
+			if err := os.WriteFile(*outPath, outputBytes, 0644); err != nil {
+				log.Fatalf("Failed to write to %s: %v", *outPath, err)
+			}
+			fmt.Printf("📦 [AgentVCR] Exported OpenTelemetry trace for %s to %s\n", *sessionID, *outPath)
+		} else {
+			fmt.Println(string(outputBytes))
+		}
+
 	default:
 		printHelp()
 	}
@@ -351,6 +392,7 @@ func printHelp() {
 	fmt.Println("  cluster   Fleet-wide trajectory pattern clustering & usage heatmaps")
 	fmt.Println("  fuzz      Adversarial prompt injection & fault mutation harness")
 	fmt.Println("  serve     Host real-time streaming telemetry dashboard & API")
+	fmt.Println("  export    Export session traces to OpenTelemetry (OTel / OTLP JSON)")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -362,4 +404,5 @@ func printHelp() {
 	fmt.Println("  agentvcr cluster")
 	fmt.Println("  agentvcr fuzz -id trace_1 -strategy prompt_injection -count 3")
 	fmt.Println("  agentvcr serve --port 9090")
+	fmt.Println("  agentvcr export -id trace_1 -format otlp -out trace_otel.json")
 }
