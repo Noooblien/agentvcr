@@ -96,7 +96,8 @@ client = OpenAI(
 - [x] Cross-trajectory causal DAG synthesizer & automated root-cause repair engine (`causal`)
 - [x] Real-time runtime policy governance & zero-trust sandboxing enforcer (`policy`)
 - [x] Ephemeral execution sandboxing & microsecond state lineage graphs (`lineage`)
-- [ ] Automated synthetic agent benchmark leaderboard & regression diffing (`leaderboard`)
+- [x] Automated synthetic agent benchmark leaderboard & regression diffing (`leaderboard`)
+- [ ] Dynamic latency budget allocator & distributed token rate-limiter (`throttle`)
 
 ---
 

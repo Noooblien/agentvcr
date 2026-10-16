@@ -20,6 +20,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
+	"github.com/Noooblien/agentvcr/pkg/leaderboard"
 	"github.com/Noooblien/agentvcr/pkg/lineage"
 	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/policy"
@@ -841,6 +842,72 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "leaderboard":
+		lbCmd := flag.NewFlagSet("leaderboard", flag.ExitOnError)
+		sessionsArg := lbCmd.String("sessions", "", "Comma-separated list of trace session IDs to rank on the leaderboard")
+		suiteName := lbCmd.String("suite", "Autonomous Engineering Benchmark", "Benchmark suite evaluation title")
+		diffMode := lbCmd.Bool("diff", false, "Run head-to-head regression diff between baseline and candidate")
+		baselineID := lbCmd.String("baseline", "", "Baseline session ID for regression diffing")
+		candidateID := lbCmd.String("candidate", "", "Candidate session ID for regression diffing")
+		strict := lbCmd.Bool("strict", false, "Exit with non-zero exit code if regression is detected or gate fails")
+		_ = lbCmd.Parse(os.Args[2:])
+
+		if *diffMode || (*baselineID != "" && *candidateID != "") {
+			if *baselineID == "" || *candidateID == "" {
+				log.Fatal("Usage: agentvcr leaderboard -diff -baseline <id> -candidate <id> [-strict]")
+			}
+			baseSess, err := store.LoadSession(*baselineID)
+			if err != nil {
+				log.Fatalf("Error loading baseline session %s: %v", *baselineID, err)
+			}
+			candSess, err := store.LoadSession(*candidateID)
+			if err != nil {
+				log.Fatalf("Error loading candidate session %s: %v", *candidateID, err)
+			}
+
+			diff := leaderboard.DiffSessions(baseSess, candSess, nil)
+			fmt.Print(leaderboard.RenderRegressionDiffCard(diff))
+
+			if *strict && !diff.PassGate {
+				os.Exit(1)
+			}
+			return
+		}
+
+		var targetSessions []*trace.Session
+		if *sessionsArg != "" {
+			ids := strings.Split(*sessionsArg, ",")
+			for _, id := range ids {
+				trimmed := strings.TrimSpace(id)
+				if trimmed == "" {
+					continue
+				}
+				s, err := store.LoadSession(trimmed)
+				if err != nil {
+					log.Fatalf("Error loading session %s: %v", trimmed, err)
+				}
+				targetSessions = append(targetSessions, s)
+			}
+		} else {
+			traces, err := store.ListSessions()
+			if err != nil {
+				log.Fatalf("Error listing sessions: %v", err)
+			}
+			for _, t := range traces {
+				s, err := store.LoadSession(t)
+				if err == nil {
+					targetSessions = append(targetSessions, s)
+				}
+			}
+		}
+
+		if len(targetSessions) == 0 {
+			log.Fatal("No sessions found to benchmark. Record sessions or specify -sessions <id1,id2>.")
+		}
+
+		lb := leaderboard.BuildLeaderboard(targetSessions, *suiteName)
+		fmt.Print(leaderboard.RenderLeaderboardTable(lb))
+
 	default:
 		printHelp()
 	}
@@ -849,26 +916,27 @@ func main() {
 func printHelp() {
 	fmt.Println("AgentVCR — Deterministic Flight Recorder & Time-Travel Debugger for AI Agents")
 	fmt.Println("\nCommands:")
-	fmt.Println("  record    Start transparent reverse-proxy recording session")
-	fmt.Println("  view      Inspect recorded agent trajectory and token events")
-	fmt.Println("  fork      Branch an execution trace at an exact step for re-testing")
-	fmt.Println("  diff      Compare two trajectories to pinpoint execution divergence")
-	fmt.Println("  eval      Run deterministic assertion suites and SLAs on trajectories")
-	fmt.Println("  play      Interactive visual terminal playback of agent execution")
-	fmt.Println("  snapshot  Capture or restore deterministic workspace filesystem state")
-	fmt.Println("  cluster   Fleet-wide trajectory pattern clustering & usage heatmaps")
-	fmt.Println("  fuzz      Adversarial prompt injection & fault mutation harness")
-	fmt.Println("  serve     Host real-time streaming telemetry dashboard & API")
-	fmt.Println("  export    Export session traces to OpenTelemetry (OTel / OTLP JSON)")
-	fmt.Println("  sign      Cryptographically sign trajectory with Ed25519 digital signature")
-	fmt.Println("  verify    Validate cryptographic attestation & verify zero tampering")
-	fmt.Println("  sim       Offline mock tool synthesizer and deterministic synthetic simulator")
-	fmt.Println("  bench     Agentic memory regression tester & long-horizon recall benchmarks")
-	fmt.Println("  consensus Multi-agent consensus & Byzantine fault detection replay harness")
-	fmt.Println("  forensics Semantic vector search & RAG hallucination replay forensics")
-	fmt.Println("  causal    Cross-trajectory causal DAG synthesizer & automated root-cause repair engine")
-	fmt.Println("  policy    Real-time runtime policy governance & zero-trust sandboxing enforcer")
-	fmt.Println("  lineage   Ephemeral execution sandboxing & microsecond state lineage graphs")
+	fmt.Println("  record      Start transparent reverse-proxy recording session")
+	fmt.Println("  view        Inspect recorded agent trajectory and token events")
+	fmt.Println("  fork        Branch an execution trace at an exact step for re-testing")
+	fmt.Println("  diff        Compare two trajectories to pinpoint execution divergence")
+	fmt.Println("  eval        Run deterministic assertion suites and SLAs on trajectories")
+	fmt.Println("  play        Interactive visual terminal playback of agent execution")
+	fmt.Println("  snapshot    Capture or restore deterministic workspace filesystem state")
+	fmt.Println("  cluster     Fleet-wide trajectory pattern clustering & usage heatmaps")
+	fmt.Println("  fuzz        Adversarial prompt injection & fault mutation harness")
+	fmt.Println("  serve       Host real-time streaming telemetry dashboard & API")
+	fmt.Println("  export      Export session traces to OpenTelemetry (OTel / OTLP JSON)")
+	fmt.Println("  sign        Cryptographically sign trajectory with Ed25519 digital signature")
+	fmt.Println("  verify      Validate cryptographic attestation & verify zero tampering")
+	fmt.Println("  sim         Offline mock tool synthesizer and deterministic synthetic simulator")
+	fmt.Println("  bench       Agentic memory regression tester & long-horizon recall benchmarks")
+	fmt.Println("  consensus   Multi-agent consensus & Byzantine fault detection replay harness")
+	fmt.Println("  forensics   Semantic vector search & RAG hallucination replay forensics")
+	fmt.Println("  causal      Cross-trajectory causal DAG synthesizer & automated root-cause repair engine")
+	fmt.Println("  policy      Real-time runtime policy governance & zero-trust sandboxing enforcer")
+	fmt.Println("  lineage     Ephemeral execution sandboxing & microsecond state lineage graphs")
+	fmt.Println("  leaderboard Automated synthetic agent benchmark leaderboard & regression diffing")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -890,4 +958,6 @@ func printHelp() {
 	fmt.Println("  agentvcr causal -id trace_1 -repair")
 	fmt.Println("  agentvcr policy -id trace_1 -forbid 'rm -rf' -block-host 169.254.169.254 -strict")
 	fmt.Println("  agentvcr lineage -id trace_1 -key auth.token -step 3")
+	fmt.Println("  agentvcr leaderboard -sessions agent_1,agent_2,agent_3")
+	fmt.Println("  agentvcr leaderboard -diff -baseline trace_1 -candidate trace_2 -strict")
 }
