@@ -21,6 +21,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/consensus"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/diff"
+	"github.com/Noooblien/agentvcr/pkg/drift"
 	"github.com/Noooblien/agentvcr/pkg/ebpf"
 	"github.com/Noooblien/agentvcr/pkg/enclave"
 	"github.com/Noooblien/agentvcr/pkg/eval"
@@ -1811,6 +1812,40 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "drift":
+		driftCmd := flag.NewFlagSet("drift", flag.ExitOnError)
+		baseID := driftCmd.String("base", "", "Baseline trusted Trace Session ID")
+		targetID := driftCmd.String("target", "", "Candidate Trace Session ID to evaluate for behavioral drift")
+		thresh := driftCmd.Float64("threshold", 0.20, "Jensen-Shannon divergence threshold (0.0 - 1.0)")
+		strict := driftCmd.Bool("strict", false, "Exit with non-zero exit code if behavioral drift is detected")
+		_ = driftCmd.Parse(os.Args[2:])
+
+		if *baseID == "" || *targetID == "" {
+			log.Fatal("Usage: agentvcr drift -base <baseline_session_id> -target <target_session_id> [-threshold <f>] [-strict]")
+		}
+
+		baseSession, err := store.LoadSession(*baseID)
+		if err != nil {
+			log.Fatalf("Error loading baseline session %s: %v", *baseID, err)
+		}
+		targetSession, err := store.LoadSession(*targetID)
+		if err != nil {
+			log.Fatalf("Error loading target session %s: %v", *targetID, err)
+		}
+
+		cfg := drift.DefaultDetectorConfig()
+		if *thresh > 0 {
+			cfg.DriftThreshold = *thresh
+		}
+
+		detector := drift.NewDetector(cfg)
+		analysis := detector.AnalyzeDrift(baseSession, targetSession)
+		fmt.Print(drift.RenderDriftScorecard(analysis))
+
+		if *strict && analysis.DriftDetected {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1860,18 +1895,7 @@ func printHelp() {
 	fmt.Println("  byzantine   Distributed multi-agent semantic consensus ledger & Byzantine fault recovery")
 	fmt.Println("  stego       Autonomous cross-agent covert communication channel detector & steganography analyzer")
 	fmt.Println("  taint       Dynamic Information Flow Control (IFC) taint tracker & Non-Interference auditor")
-	fmt.Println("  ebpf        Ephemeral eBPF kernel socket & system-call interception recorder")
-	fmt.Println("  canary      Canary deployment traffic shadowing & live execution chaos injection")
-	fmt.Println("  pqc         Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation")
-	fmt.Println("  raft        Multi-region active-active trajectory replication & Raft ledger sync")
-	fmt.Println("  heal        Autonomous self-healing trajectory patch synthesizer & AST repair engine")
-	fmt.Println("  enclave     Confidential computing hardware enclave attestation & AMD SEV-SNP verification")
-	fmt.Println("  timing      Automated prompt-leakage side-channel analyzer & differential cache-timing forensics")
-	fmt.Println("  wasi        Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox")
-	fmt.Println("  redteam     Autonomous synthetic multi-agent red-team prompt injection harness")
-	fmt.Println("  tlaplus     Formally verified state-machine temporal logic model checker & TLA+ exporter")
-	fmt.Println("  byzantine   Distributed multi-agent semantic consensus ledger & Byzantine fault recovery")
-	fmt.Println("  stego       Autonomous cross-agent covert communication channel detector & steganography analyzer")
+	fmt.Println("  drift       Autonomous cross-agent behavioral drift & entropy-guided policy synthesis")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
