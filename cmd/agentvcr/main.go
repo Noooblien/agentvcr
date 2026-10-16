@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -27,6 +29,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/lineage"
 	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/policy"
+	"github.com/Noooblien/agentvcr/pkg/pqc"
 	"github.com/Noooblien/agentvcr/pkg/privacy"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
@@ -1301,6 +1304,81 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "pqc":
+		pqcCmd := flag.NewFlagSet("pqc", flag.ExitOnError)
+		sessionID := pqcCmd.String("id", "", "Trace Session ID to attest with post-quantum cryptography")
+		algo := pqcCmd.String("algo", "dilithium3", "PQC algorithm: 'dilithium3', 'dilithium5', or 'hybrid'")
+		kem := pqcCmd.Bool("kem", true, "Execute ML-KEM-768 key encapsulation for quantum-safe forward security")
+		certOut := pqcCmd.String("out", "", "Output path for post-quantum attestation certificate")
+		strict := pqcCmd.Bool("strict", false, "Exit with non-zero exit code if post-quantum attestation or verification fails")
+		_ = pqcCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr pqc -id <session_id> [-algo <dilithium3|dilithium5|hybrid>] [-kem] [-out <cert.json>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		pqcAlgo := pqc.AlgorithmDilithium3
+		switch *algo {
+		case "dilithium3":
+			pqcAlgo = pqc.AlgorithmDilithium3
+		case "dilithium5":
+			pqcAlgo = pqc.AlgorithmDilithium5
+		case "hybrid":
+			pqcAlgo = pqc.AlgorithmHybridEd25519Dilithium
+		default:
+			log.Fatalf("Unknown PQC algorithm '%s'", *algo)
+		}
+
+		keyPair, err := pqc.GenerateDilithiumKeyPair(pqcAlgo)
+		if err != nil {
+			log.Fatalf("PQC key generation failed: %v", err)
+		}
+
+		var edPriv ed25519.PrivateKey
+		var edPub ed25519.PublicKey
+		if pqcAlgo == pqc.AlgorithmHybridEd25519Dilithium {
+			edPub, edPriv, _ = ed25519.GenerateKey(rand.Reader)
+		}
+
+		cert, err := pqc.SignTrajectoryPQC(session, keyPair, edPriv)
+		if err != nil {
+			log.Fatalf("PQC signing failed: %v", err)
+		}
+
+		destCert := *certOut
+		if destCert == "" {
+			destCert = fmt.Sprintf("./.vcr_traces/%s.pqc.cert.json", *sessionID)
+		}
+		certJSON, _ := json.MarshalIndent(cert, "", "  ")
+		_ = os.WriteFile(destCert, certJSON, 0644)
+
+		ver := pqc.VerifyTrajectoryPQC(session, cert, edPub)
+
+		var kemRes *pqc.KyberKEMResult
+		if *kem {
+			kemRes, _ = pqc.EncapsulateKyberKEM(keyPair.PublicKey, pqc.AlgorithmKyber768)
+		}
+
+		report := &pqc.PQCReport{
+			SessionID:    *sessionID,
+			Certificate:  *cert,
+			Verification: ver,
+			KEMResult:    kemRes,
+			Passed:       ver.Valid,
+		}
+
+		fmt.Print(pqc.RenderPQCScorecard(report))
+		fmt.Printf("🔒 [AgentVCR] Post-quantum certificate written to: %s\n\n", destCert)
+
+		if *strict && !ver.Valid {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1339,6 +1417,7 @@ func printHelp() {
 	fmt.Println("  vision      Multi-modal frame-accurate visual state recording & screen grounding attestation")
 	fmt.Println("  ebpf        Ephemeral eBPF kernel socket & system-call interception recorder")
 	fmt.Println("  canary      Canary deployment traffic shadowing & live execution chaos injection")
+	fmt.Println("  pqc         Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1372,4 +1451,5 @@ func printHelp() {
 	fmt.Println("  agentvcr vision -id trace_1 -strict")
 	fmt.Println("  agentvcr ebpf -id trace_1 -strict")
 	fmt.Println("  agentvcr canary -id trace_1 -chaos latency -rate 0.25 -strict")
+	fmt.Println("  agentvcr pqc -id trace_1 -algo dilithium3 -kem -strict")
 }

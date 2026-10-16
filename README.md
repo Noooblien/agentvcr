@@ -106,7 +106,8 @@ client = OpenAI(
 - [x] Multi-modal frame-accurate visual state recording & screen grounding attestation (`vision`)
 - [x] Ephemeral eBPF kernel socket & system-call interception recorder (`ebpf`)
 - [x] Canary deployment traffic shadowing & live execution chaos injection (`canary`)
-- [ ] Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation (`pqc`)
+- [x] Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation (`pqc`)
+- [ ] Multi-region active-active trajectory replication & Raft ledger sync (`raft`)
 
 ---
 
