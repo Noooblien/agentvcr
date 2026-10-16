@@ -17,6 +17,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/consensus"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/diff"
+	"github.com/Noooblien/agentvcr/pkg/ebpf"
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
@@ -1226,6 +1227,34 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "ebpf":
+		ebpfCmd := flag.NewFlagSet("ebpf", flag.ExitOnError)
+		sessionID := ebpfCmd.String("id", "", "Trace Session ID to audit for kernel socket & syscall interception")
+		blockIP := ebpfCmd.String("block-ip", "", "Additional IP to block at kernel socket level")
+		strict := ebpfCmd.Bool("strict", false, "Exit with non-zero exit code if blocked syscalls or SSRF attempts detected")
+		_ = ebpfCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr ebpf -id <session_id> [-block-ip <ip>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		cfg := ebpf.DefaultEBPFConfig()
+		if *blockIP != "" {
+			cfg.BlockedIPs = append(cfg.BlockedIPs, *blockIP)
+		}
+
+		_, report := ebpf.SimulateSessionEBPF(session, cfg)
+		fmt.Print(ebpf.RenderEBPFScorecard(report))
+
+		if *strict && (!report.Passed || report.BlockedSyscallsCount > 0) {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1262,6 +1291,7 @@ func printHelp() {
 	fmt.Println("  gossip      Ephemeral P2P agent gossip consensus & distributed Byzantine quorum ledger")
 	fmt.Println("  privacy     Distributed differential privacy token masking & k-anonymity auditing")
 	fmt.Println("  vision      Multi-modal frame-accurate visual state recording & screen grounding attestation")
+	fmt.Println("  ebpf        Ephemeral eBPF kernel socket & system-call interception recorder")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1293,4 +1323,5 @@ func printHelp() {
 	fmt.Println("  agentvcr gossip -id trace_1 -peers 5 -strict")
 	fmt.Println("  agentvcr privacy -id trace_1 -epsilon 1.0 -k 3 -sanitize -strict")
 	fmt.Println("  agentvcr vision -id trace_1 -strict")
+	fmt.Println("  agentvcr ebpf -id trace_1 -strict")
 }

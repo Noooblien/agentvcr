@@ -104,7 +104,8 @@ client = OpenAI(
 - [x] Ephemeral P2P agent gossip consensus & distributed Byzantine quorum ledger (`gossip`)
 - [x] Distributed differential privacy token masking & k-anonymity auditing (`privacy`)
 - [x] Multi-modal frame-accurate visual state recording & screen grounding attestation (`vision`)
-- [ ] Ephemeral eBPF kernel socket & system-call interception recorder (`ebpf`)
+- [x] Ephemeral eBPF kernel socket & system-call interception recorder (`ebpf`)
+- [ ] Canary deployment traffic shadowing & live execution chaos injection (`canary`)
 
 ---
 
