@@ -115,7 +115,8 @@ client = OpenAI(
 - [x] Autonomous synthetic multi-agent red-team prompt injection harness (`redteam`)
 - [x] Formally verified state-machine temporal logic model checker (`tlaplus`)
 - [x] Distributed multi-agent semantic consensus ledger & Byzantine fault recovery (`byzantine`)
-- [ ] Autonomous cross-agent covert communication channel detector & steganography analyzer (`stego`)
+- [x] Autonomous cross-agent covert communication channel detector & steganography analyzer (`stego`)
+- [ ] Real-time dynamic symbolic taint-tracking engine & zero-leakage data flow graph (`taint`)
 
 ---
 

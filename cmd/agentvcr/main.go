@@ -41,6 +41,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/sim"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
 	"github.com/Noooblien/agentvcr/pkg/speculate"
+	"github.com/Noooblien/agentvcr/pkg/stego"
 	"github.com/Noooblien/agentvcr/pkg/storage"
 	"github.com/Noooblien/agentvcr/pkg/tenant"
 	"github.com/Noooblien/agentvcr/pkg/throttle"
@@ -1709,6 +1710,37 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "stego":
+		stegoCmd := flag.NewFlagSet("stego", flag.ExitOnError)
+		sessionID := stegoCmd.String("id", "", "Trace Session ID to audit for covert channels and steganography")
+		entropyThresh := stegoCmd.Float64("entropy", 4.85, "Shannon entropy threshold anomaly in bits/char")
+		strict := stegoCmd.Bool("strict", false, "Exit with non-zero exit code if covert signals are detected")
+		_ = stegoCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr stego -id <session_id> [-entropy <bits>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		cfg := stego.DefaultStegoConfig()
+		cfg.MinEntropyAnomalyThreshold = *entropyThresh
+
+		detector := stego.NewDetector(cfg)
+		report, err := detector.AnalyzeSession(session)
+		if err != nil {
+			log.Fatalf("Steganography analysis failed: %v", err)
+		}
+
+		fmt.Print(stego.RenderStegoScorecard(report))
+
+		if *strict && report.CovertChannelPresent {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1756,6 +1788,7 @@ func printHelp() {
 	fmt.Println("  redteam     Autonomous synthetic multi-agent red-team prompt injection harness")
 	fmt.Println("  tlaplus     Formally verified state-machine temporal logic model checker & TLA+ exporter")
 	fmt.Println("  byzantine   Distributed multi-agent semantic consensus ledger & Byzantine fault recovery")
+	fmt.Println("  stego       Autonomous cross-agent covert communication channel detector & steganography analyzer")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1798,4 +1831,5 @@ func printHelp() {
 	fmt.Println("  agentvcr redteam -id trace_1 -rounds 3 -strict")
 	fmt.Println("  agentvcr tlaplus -id trace_1 -out spec.tla -strict")
 	fmt.Println("  agentvcr byzantine -nodes 4 -rounds 3 -strict")
+	fmt.Println("  agentvcr stego -id trace_1 -entropy 4.85 -strict")
 }
