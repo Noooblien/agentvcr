@@ -44,6 +44,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/tenant"
 	"github.com/Noooblien/agentvcr/pkg/throttle"
 	"github.com/Noooblien/agentvcr/pkg/timing"
+	"github.com/Noooblien/agentvcr/pkg/tlaplus"
 	"github.com/Noooblien/agentvcr/pkg/trace"
 	"github.com/Noooblien/agentvcr/pkg/tui"
 	"github.com/Noooblien/agentvcr/pkg/vision"
@@ -1631,6 +1632,41 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "tlaplus":
+		tlaCmd := flag.NewFlagSet("tlaplus", flag.ExitOnError)
+		sessionID := tlaCmd.String("id", "", "Trace Session ID to formally model check against temporal logic invariants")
+		outTLA := tlaCmd.String("out", "", "Optional output path to export synthesized TLA+ specification file")
+		strict := tlaCmd.Bool("strict", false, "Exit with non-zero exit code if temporal invariants are refuted")
+		_ = tlaCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr tlaplus -id <session_id> [-out <spec.tla>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		checker := tlaplus.DefaultSafetySuite()
+		report, err := checker.VerifySession(session)
+		if err != nil {
+			log.Fatalf("TLA+ temporal model checking failed: %v", err)
+		}
+
+		fmt.Print(tlaplus.RenderTLACheckScorecard(report))
+
+		if *outTLA != "" {
+			if err := os.WriteFile(*outTLA, []byte(report.GeneratedTLASpec), 0644); err != nil {
+				log.Fatalf("Failed to write TLA+ specification: %v", err)
+			}
+			fmt.Printf("  Formal TLA+ module exported to: %s\n\n", *outTLA)
+		}
+
+		if *strict && !report.FormallyVerified {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1676,6 +1712,7 @@ func printHelp() {
 	fmt.Println("  timing      Automated prompt-leakage side-channel analyzer & differential cache-timing forensics")
 	fmt.Println("  wasi        Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox")
 	fmt.Println("  redteam     Autonomous synthetic multi-agent red-team prompt injection harness")
+	fmt.Println("  tlaplus     Formally verified state-machine temporal logic model checker & TLA+ exporter")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1716,4 +1753,5 @@ func printHelp() {
 	fmt.Println("  agentvcr timing -id trace_1 -max-leak-bits 4.0 -pad -strict")
 	fmt.Println("  agentvcr wasi -id trace_1 -fuel 1000000 -strict")
 	fmt.Println("  agentvcr redteam -id trace_1 -rounds 3 -strict")
+	fmt.Println("  agentvcr tlaplus -id trace_1 -out spec.tla -strict")
 }

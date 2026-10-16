@@ -113,7 +113,8 @@ client = OpenAI(
 - [x] Automated prompt-leakage side-channel analyzer & differential cache-timing forensics (`timing`)
 - [x] Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox (`wasi`)
 - [x] Autonomous synthetic multi-agent red-team prompt injection harness (`redteam`)
-- [ ] Formally verified state-machine temporal logic model checker (`tlaplus`)
+- [x] Formally verified state-machine temporal logic model checker (`tlaplus`)
+- [ ] Distributed multi-agent semantic consensus ledger & Byzantine fault recovery (`byzantine`)
 
 ---
 
