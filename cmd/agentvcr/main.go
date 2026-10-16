@@ -14,6 +14,7 @@ import (
 
 	"github.com/Noooblien/agentvcr/pkg/attest"
 	"github.com/Noooblien/agentvcr/pkg/bench"
+	"github.com/Noooblien/agentvcr/pkg/byzantine"
 	"github.com/Noooblien/agentvcr/pkg/canary"
 	"github.com/Noooblien/agentvcr/pkg/causal"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
@@ -1667,6 +1668,47 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "byzantine":
+		byzCmd := flag.NewFlagSet("byzantine", flag.ExitOnError)
+		sessionID := byzCmd.String("id", "", "Trace Session ID to evaluate against Byzantine consensus invariants")
+		nodes := byzCmd.Int("nodes", 4, "Number of swarm agent nodes in simulation (N >= 3f + 1)")
+		rounds := byzCmd.Int("rounds", 3, "Number of consensus rounds to execute")
+		strict := byzCmd.Bool("strict", false, "Exit with non-zero exit code if Byzantine quorum fails or ledger is corrupted")
+		_ = byzCmd.Parse(os.Args[2:])
+
+		var nodeIDs []string
+		for i := 0; i < *nodes; i++ {
+			nodeIDs = append(nodeIDs, fmt.Sprintf("agent-node-%d", i))
+		}
+
+		engine, err := byzantine.NewEngine(nodeIDs)
+		if err != nil {
+			log.Fatalf("Failed to initialize Byzantine consensus engine: %v", err)
+		}
+
+		var report *byzantine.ByzantineReport
+		if *sessionID != "" {
+			session, err := store.LoadSession(*sessionID)
+			if err != nil {
+				log.Fatalf("Error loading session %s: %v", *sessionID, err)
+			}
+			report, err = engine.AnalyzeSession(session)
+			if err != nil {
+				log.Fatalf("Byzantine session analysis failed: %v", err)
+			}
+		} else {
+			report, err = engine.SimulateConsensusScenario(*rounds, true, true)
+			if err != nil {
+				log.Fatalf("Byzantine simulation failed: %v", err)
+			}
+		}
+
+		fmt.Print(byzantine.RenderByzantineScorecard(report))
+
+		if *strict && (!report.IsByzantineResilient || !report.LedgerValid) {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1713,6 +1755,7 @@ func printHelp() {
 	fmt.Println("  wasi        Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox")
 	fmt.Println("  redteam     Autonomous synthetic multi-agent red-team prompt injection harness")
 	fmt.Println("  tlaplus     Formally verified state-machine temporal logic model checker & TLA+ exporter")
+	fmt.Println("  byzantine   Distributed multi-agent semantic consensus ledger & Byzantine fault recovery")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1754,4 +1797,5 @@ func printHelp() {
 	fmt.Println("  agentvcr wasi -id trace_1 -fuel 1000000 -strict")
 	fmt.Println("  agentvcr redteam -id trace_1 -rounds 3 -strict")
 	fmt.Println("  agentvcr tlaplus -id trace_1 -out spec.tla -strict")
+	fmt.Println("  agentvcr byzantine -nodes 4 -rounds 3 -strict")
 }

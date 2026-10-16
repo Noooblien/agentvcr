@@ -114,7 +114,8 @@ client = OpenAI(
 - [x] Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox (`wasi`)
 - [x] Autonomous synthetic multi-agent red-team prompt injection harness (`redteam`)
 - [x] Formally verified state-machine temporal logic model checker (`tlaplus`)
-- [ ] Distributed multi-agent semantic consensus ledger & Byzantine fault recovery (`byzantine`)
+- [x] Distributed multi-agent semantic consensus ledger & Byzantine fault recovery (`byzantine`)
+- [ ] Autonomous cross-agent covert communication channel detector & steganography analyzer (`stego`)
 
 ---
 
