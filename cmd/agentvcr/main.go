@@ -32,6 +32,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/throttle"
 	"github.com/Noooblien/agentvcr/pkg/trace"
 	"github.com/Noooblien/agentvcr/pkg/tui"
+	"github.com/Noooblien/agentvcr/pkg/zkp"
 )
 
 func main() {
@@ -948,6 +949,84 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "zkp":
+		zkpCmd := flag.NewFlagSet("zkp", flag.ExitOnError)
+		action := zkpCmd.String("action", "prove", "ZKP operation: 'prove' (generate proof) or 'verify' (audit proof)")
+		sessionID := zkpCmd.String("id", "", "Trace Session ID to generate zero-knowledge attestation proof for")
+		proofFile := zkpCmd.String("proof", "", "Path to ZK proof JSON file (required for 'verify', optional for 'prove' -out)")
+		requireZeroPII := zkpCmd.Bool("zero-pii", true, "Prove zero PII or private credentials leaked")
+		requireZeroErrors := zkpCmd.Bool("zero-errors", true, "Prove zero unhandled tool errors")
+		maxCost := zkpCmd.Float64("max-cost", 0.0, "Prove total USD cost ceiling without revealing token counts")
+		maxTokens := zkpCmd.Int("max-tokens", 0, "Prove token consumption ceiling")
+		strict := zkpCmd.Bool("strict", false, "Exit with non-zero exit code if proof verification fails")
+		_ = zkpCmd.Parse(os.Args[2:])
+
+		switch *action {
+		case "prove":
+			if *sessionID == "" {
+				log.Fatal("Usage: agentvcr zkp -action prove -id <session_id> [-proof <out.json>] [-zero-pii] [-zero-errors]")
+			}
+			session, err := store.LoadSession(*sessionID)
+			if err != nil {
+				log.Fatalf("Error loading session %s: %v", *sessionID, err)
+			}
+
+			claim := zkp.ProofClaim{
+				ClaimID:               fmt.Sprintf("zk-claim-%s", *sessionID),
+				Description:           fmt.Sprintf("Zero-Knowledge Attestation for %s", *sessionID),
+				RequireZeroPII:        *requireZeroPII,
+				RequireZeroToolErrors: *requireZeroErrors,
+				MaxCostUSDLimit:       *maxCost,
+				MaxTokensLimit:        *maxTokens,
+			}
+
+			proof, err := zkp.GenerateProof(session, claim)
+			if err != nil {
+				log.Fatalf("ZKP generation failed: %v", err)
+			}
+
+			outPath := *proofFile
+			if outPath == "" {
+				outPath = fmt.Sprintf("%s.zkp.json", *sessionID)
+			}
+			proofBytes, _ := json.MarshalIndent(proof, "", "  ")
+			if err := os.WriteFile(outPath, proofBytes, 0644); err != nil {
+				log.Fatalf("Failed to save proof file: %v", err)
+			}
+
+			verifyRes, err := zkp.VerifyProof(proof)
+			if err != nil {
+				log.Fatalf("Self-verification failed: %v", err)
+			}
+			fmt.Print(zkp.RenderZKProofScorecard(proof, verifyRes))
+			fmt.Printf("🔒 [AgentVCR] Zero-knowledge proof securely written to: %s\n\n", outPath)
+
+		case "verify":
+			if *proofFile == "" {
+				log.Fatal("Usage: agentvcr zkp -action verify -proof <proof.json> [-strict]")
+			}
+			pData, err := os.ReadFile(*proofFile)
+			if err != nil {
+				log.Fatalf("Failed to read proof file %s: %v", *proofFile, err)
+			}
+			var proof zkp.ZKAttestationProof
+			if err := json.Unmarshal(pData, &proof); err != nil {
+				log.Fatalf("Invalid proof JSON: %v", err)
+			}
+
+			verifyRes, err := zkp.VerifyProof(&proof)
+			if err != nil {
+				log.Fatalf("Proof verification failed: %v", err)
+			}
+			fmt.Print(zkp.RenderZKProofScorecard(&proof, verifyRes))
+
+			if *strict && !verifyRes.Valid {
+				os.Exit(1)
+			}
+		default:
+			log.Fatalf("Unknown zkp action '%s'. Use 'prove' or 'verify'.", *action)
+		}
+
 	default:
 		printHelp()
 	}
@@ -978,6 +1057,7 @@ func printHelp() {
 	fmt.Println("  lineage     Ephemeral execution sandboxing & microsecond state lineage graphs")
 	fmt.Println("  leaderboard Automated synthetic agent benchmark leaderboard & regression diffing")
 	fmt.Println("  throttle    Dynamic latency budget allocator & distributed token rate-limiter")
+	fmt.Println("  zkp         Cross-organization zero-knowledge trajectory attestation & zk-proofs")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1002,4 +1082,6 @@ func printHelp() {
 	fmt.Println("  agentvcr leaderboard -sessions agent_1,agent_2,agent_3")
 	fmt.Println("  agentvcr leaderboard -diff -baseline trace_1 -candidate trace_2 -strict")
 	fmt.Println("  agentvcr throttle -id trace_1 -max-rpm 120 -total-budget 15000 -strict")
+	fmt.Println("  agentvcr zkp -action prove -id trace_1 -proof trace_1.zkp.json -zero-pii")
+	fmt.Println("  agentvcr zkp -action verify -proof trace_1.zkp.json -strict")
 }

@@ -98,7 +98,8 @@ client = OpenAI(
 - [x] Ephemeral execution sandboxing & microsecond state lineage graphs (`lineage`)
 - [x] Automated synthetic agent benchmark leaderboard & regression diffing (`leaderboard`)
 - [x] Dynamic latency budget allocator & distributed token rate-limiter (`throttle`)
-- [ ] Cross-organization zero-knowledge trajectory attestation & cryptographic zk-proofs (`zkp`)
+- [x] Cross-organization zero-knowledge trajectory attestation & cryptographic zk-proofs (`zkp`)
+- [ ] Adaptive speculative execution rollback & predictive branch caching (`speculate`)
 
 ---
 
