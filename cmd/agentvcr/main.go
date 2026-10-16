@@ -30,6 +30,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
 	"github.com/Noooblien/agentvcr/pkg/speculate"
 	"github.com/Noooblien/agentvcr/pkg/storage"
+	"github.com/Noooblien/agentvcr/pkg/tenant"
 	"github.com/Noooblien/agentvcr/pkg/throttle"
 	"github.com/Noooblien/agentvcr/pkg/trace"
 	"github.com/Noooblien/agentvcr/pkg/tui"
@@ -1085,6 +1086,48 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "tenant":
+		tenantCmd := flag.NewFlagSet("tenant", flag.ExitOnError)
+		sessionID := tenantCmd.String("id", "", "Trace Session ID to audit for tenant namespace isolation")
+		tenantID := tenantCmd.String("tenant", "tenant-default", "Tenant namespace identifier")
+		org := tenantCmd.String("org", "Default Organization", "Organization name")
+		blockTool := tenantCmd.String("block-tool", "", "Optional tool to block within this tenant namespace")
+		strict := tenantCmd.Bool("strict", false, "Exit with non-zero exit code if namespace or RBAC violations occur")
+		_ = tenantCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr tenant -id <session_id> [-tenant <name>] [-org <name>] [-block-tool <tool>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		mgr := tenant.NewManager()
+		policy := tenant.NamespacePolicy{
+			TenantID:          *tenantID,
+			Organization:      *org,
+			EnforceEncryption: true,
+		}
+		if *blockTool != "" {
+			policy.BlockedToolList = []string{*blockTool}
+		}
+		if err := mgr.RegisterTenant(policy); err != nil {
+			log.Fatalf("Failed to register tenant policy: %v", err)
+		}
+
+		report, err := mgr.AuditSession(session, *tenantID)
+		if err != nil {
+			log.Fatalf("Tenant audit failed: %v", err)
+		}
+
+		fmt.Print(tenant.RenderTenantScorecard(report))
+
+		if *strict && (!report.NamespaceIntegrityOK || report.DeniedRequests > 0) {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1117,6 +1160,7 @@ func printHelp() {
 	fmt.Println("  throttle    Dynamic latency budget allocator & distributed token rate-limiter")
 	fmt.Println("  zkp         Cross-organization zero-knowledge trajectory attestation & zk-proofs")
 	fmt.Println("  speculate   Adaptive speculative execution rollback & predictive branch caching")
+	fmt.Println("  tenant      Multi-tenant cryptographic namespace isolation & RBAC policy audit")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1144,4 +1188,5 @@ func printHelp() {
 	fmt.Println("  agentvcr zkp -action prove -id trace_1 -proof trace_1.zkp.json -zero-pii")
 	fmt.Println("  agentvcr zkp -action verify -proof trace_1.zkp.json -strict")
 	fmt.Println("  agentvcr speculate -id trace_1 -min-conf 0.80 -strict")
+	fmt.Println("  agentvcr tenant -id trace_1 -tenant enterprise_corp -block-tool shell_exec -strict")
 }

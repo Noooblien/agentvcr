@@ -100,7 +100,8 @@ client = OpenAI(
 - [x] Dynamic latency budget allocator & distributed token rate-limiter (`throttle`)
 - [x] Cross-organization zero-knowledge trajectory attestation & cryptographic zk-proofs (`zkp`)
 - [x] Adaptive speculative execution rollback & predictive branch caching (`speculate`)
-- [ ] Multi-tenant cryptographic namespace isolation & RBAC policy audit (`tenant`)
+- [x] Multi-tenant cryptographic namespace isolation & RBAC policy audit (`tenant`)
+- [ ] Ephemeral P2P agent gossip consensus & distributed Byzantine quorum ledger (`gossip`)
 
 ---
 
