@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Noooblien/agentvcr/pkg/attest"
+	"github.com/Noooblien/agentvcr/pkg/bench"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/diff"
@@ -537,6 +538,83 @@ func main() {
 		fmt.Printf("   Errors Injected:      %d\n", report.ErrorsInjected)
 		fmt.Printf("   Trace File:           ./.vcr_traces/%s.vcr.json\n", simSession.ID)
 
+	case "bench":
+		benchCmd := flag.NewFlagSet("bench", flag.ExitOnError)
+		sessionID := benchCmd.String("id", "", "Trace Session ID to benchmark")
+		suitePath := benchCmd.String("suite", "", "Path to benchmark suite JSON file")
+		needle := benchCmd.String("needle", "", "Ad-hoc probe: needle text that must be recalled")
+		forbidden := benchCmd.String("forbidden", "", "Ad-hoc probe: forbidden regex/pattern that must not appear")
+		introStep := benchCmd.Int("intro-step", 1, "Step where needle was introduced")
+		probeStep := benchCmd.Int("probe-step", 2, "Step where needle recall is asserted")
+		minRecall := benchCmd.Float64("min-recall", 1.0, "Minimum acceptable recall score (0.0 - 1.0)")
+		maxViolations := benchCmd.Int("max-violations", 0, "Max allowed negative constraint violations")
+		_ = benchCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr bench -id <session_id> [-suite suite.json] [-needle <text>] [-forbidden <pattern>]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		var cfg bench.BenchmarkConfig
+		if *suitePath != "" {
+			data, err := os.ReadFile(*suitePath)
+			if err != nil {
+				log.Fatalf("Failed to read benchmark suite file %s: %v", *suitePath, err)
+			}
+			if err := json.Unmarshal(data, &cfg); err != nil {
+				log.Fatalf("Invalid benchmark suite JSON: %v", err)
+			}
+		} else {
+			cfg = bench.BenchmarkConfig{
+				SuiteName:               fmt.Sprintf("Ad-hoc Memory Benchmark for %s", *sessionID),
+				MinRecallScore:          *minRecall,
+				MaxConstraintViolations: *maxViolations,
+				MaxContextBloatRatio:    10.0,
+			}
+			if *needle != "" {
+				cfg.Probes = append(cfg.Probes, bench.MemoryProbe{
+					ID:            "adhoc-needle-recall",
+					Type:          bench.ProbeNeedleRecall,
+					Description:   fmt.Sprintf("Assert recall of '%s'", *needle),
+					Needle:        *needle,
+					IntroduceStep: *introStep,
+					ProbeStep:     *probeStep,
+				})
+			}
+			if *forbidden != "" {
+				cfg.Probes = append(cfg.Probes, bench.MemoryProbe{
+					ID:               "adhoc-safety-constraint",
+					Type:             bench.ProbeConstraintPreservation,
+					Description:      fmt.Sprintf("Assert pattern '%s' never appears", *forbidden),
+					ForbiddenPattern: *forbidden,
+					IntroduceStep:    *introStep,
+				})
+			}
+			// Default context efficiency probe if no custom probes given
+			if len(cfg.Probes) == 0 {
+				cfg.Probes = append(cfg.Probes, bench.MemoryProbe{
+					ID:          "context-efficiency-probe",
+					Type:        bench.ProbeContextEfficiency,
+					Description: "Measure trajectory context bloat and token expansion",
+				})
+			}
+		}
+
+		engine := bench.NewEngine()
+		report, err := engine.RunBenchmark(session, &cfg)
+		if err != nil {
+			log.Fatalf("Benchmark execution failed: %v", err)
+		}
+
+		fmt.Print(bench.RenderScorecard(report))
+		if !report.PassedSLA {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -559,6 +637,7 @@ func printHelp() {
 	fmt.Println("  sign      Cryptographically sign trajectory with Ed25519 digital signature")
 	fmt.Println("  verify    Validate cryptographic attestation & verify zero tampering")
 	fmt.Println("  sim       Offline mock tool synthesizer and deterministic synthetic simulator")
+	fmt.Println("  bench     Agentic memory regression tester & long-horizon recall benchmarks")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -574,4 +653,5 @@ func printHelp() {
 	fmt.Println("  agentvcr sign -id trace_1 -out trace_1.cert.json")
 	fmt.Println("  agentvcr verify -id trace_1 -cert trace_1.cert.json")
 	fmt.Println("  agentvcr sim -mode run -id trace_1 -mocks mocks.json")
+	fmt.Println("  agentvcr bench -id trace_1 -needle 'AUTH_KEY_123' -intro-step 1 -probe-step 5")
 }
