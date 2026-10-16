@@ -12,6 +12,7 @@ import (
 
 	"github.com/Noooblien/agentvcr/pkg/attest"
 	"github.com/Noooblien/agentvcr/pkg/bench"
+	"github.com/Noooblien/agentvcr/pkg/causal"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/consensus"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
@@ -692,6 +693,61 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "causal":
+		causalCmd := flag.NewFlagSet("causal", flag.ExitOnError)
+		sessionID := causalCmd.String("id", "", "Trace Session ID to construct causal DAG and diagnose root-causes")
+		mermaid := causalCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup")
+		repair := causalCmd.Bool("repair", false, "Generate automated branched repair session for first detected failure")
+		_ = causalCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr causal -id <session_id> [-mermaid] [-repair]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		engine := causal.NewEngine()
+		dag, err := engine.SynthesizeDAG(session)
+		if err != nil {
+			log.Fatalf("Failed to synthesize causal DAG: %v", err)
+		}
+
+		if *mermaid {
+			fmt.Println(causal.ExportMermaidDiagram(dag))
+			return
+		}
+
+		report, err := engine.DiagnoseRootCauses(session, dag)
+		if err != nil {
+			log.Fatalf("Failed to diagnose root causes: %v", err)
+		}
+
+		fmt.Print(causal.RenderCausalScorecard(report))
+
+		if *repair && len(report.RecommendedPatches) > 0 {
+			patch := report.RecommendedPatches[0]
+			repairID := fmt.Sprintf("%s_repaired_step%d_%d", *sessionID, patch.TargetStep, time.Now().Unix())
+			replayEngine := replay.NewEngine(store)
+			forked, err := replayEngine.ForkSession(*sessionID, patch.TargetStep, repairID)
+			if err != nil {
+				log.Fatalf("Failed to branch repair session: %v", err)
+			}
+			// Apply repair patch to branched step
+			for i := range forked.Events {
+				if forked.Events[i].Index == patch.TargetStep {
+					forked.Events[i].Payload = patch.ModifiedPayload
+					break
+				}
+			}
+			_ = store.SaveSession(forked)
+			fmt.Printf("\n✨ [AgentVCR] Auto-healed trajectory branch created: %s\n", repairID)
+			fmt.Printf("   Applied Patch: %s (Action: %s)\n", patch.PatchID, patch.Action)
+			fmt.Printf("   Ready for execution replay via 'agentvcr play -id %s'\n", repairID)
+		}
+
 	default:
 		printHelp()
 	}
@@ -717,6 +773,7 @@ func printHelp() {
 	fmt.Println("  bench     Agentic memory regression tester & long-horizon recall benchmarks")
 	fmt.Println("  consensus Multi-agent consensus & Byzantine fault detection replay harness")
 	fmt.Println("  forensics Semantic vector search & RAG hallucination replay forensics")
+	fmt.Println("  causal    Cross-trajectory causal DAG synthesizer & automated root-cause repair engine")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -735,4 +792,5 @@ func printHelp() {
 	fmt.Println("  agentvcr bench -id trace_1 -needle 'AUTH_KEY_123' -intro-step 1 -probe-step 5")
 	fmt.Println("  agentvcr consensus -sessions agent_1,agent_2,agent_3 -quorum 0.67")
 	fmt.Println("  agentvcr forensics -id trace_1 -threshold 0.35 -strict")
+	fmt.Println("  agentvcr causal -id trace_1 -repair")
 }

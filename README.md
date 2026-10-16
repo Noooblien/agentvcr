@@ -93,7 +93,8 @@ client = OpenAI(
 - [x] Agentic memory regression tester & long-horizon recall benchmarks (`bench`)
 - [x] Multi-agent consensus & Byzantine fault detection replay harness (`consensus`)
 - [x] Semantic vector search & RAG hallucination replay forensics (`forensics`)
-- [ ] Cross-trajectory causal DAG synthesizer & automated root-cause repair engine (`causal`)
+- [x] Cross-trajectory causal DAG synthesizer & automated root-cause repair engine (`causal`)
+- [ ] Real-time runtime policy governance & zero-trust sandboxing enforcer (`policy`)
 
 ---
 
