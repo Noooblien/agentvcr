@@ -12,6 +12,7 @@ import (
 
 	"github.com/Noooblien/agentvcr/pkg/attest"
 	"github.com/Noooblien/agentvcr/pkg/bench"
+	"github.com/Noooblien/agentvcr/pkg/canary"
 	"github.com/Noooblien/agentvcr/pkg/causal"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/consensus"
@@ -1255,6 +1256,51 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "canary":
+		canaryCmd := flag.NewFlagSet("canary", flag.ExitOnError)
+		sessionID := canaryCmd.String("id", "", "Trace Session ID to shadow and inject execution chaos")
+		chaos := canaryCmd.String("chaos", "latency", "Chaos mode: 'latency', 'http_error', 'corrupt', 'tool_failure', or 'none'")
+		rate := canaryCmd.Float64("rate", 0.25, "Probability of chaos injection per step (0.0 to 1.0)")
+		delay := canaryCmd.Int64("delay", 300, "Injected latency delay in ms (for 'latency' chaos mode)")
+		strict := canaryCmd.Bool("strict", false, "Exit with non-zero exit code if circuit breaker trips or auto-rollback triggers")
+		_ = canaryCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr canary -id <session_id> [-chaos <mode>] [-rate <float>] [-delay <ms>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		cfg := canary.DefaultCanaryConfig()
+		cfg.ChaosRate = *rate
+		cfg.LatencyDelayMs = *delay
+
+		switch *chaos {
+		case "latency":
+			cfg.ChaosMode = canary.ChaosLatencySpike
+		case "http_error":
+			cfg.ChaosMode = canary.ChaosHTTPError
+		case "corrupt":
+			cfg.ChaosMode = canary.ChaosCorruptPayload
+		case "tool_failure":
+			cfg.ChaosMode = canary.ChaosToolFailure
+		case "none":
+			cfg.ChaosMode = canary.ChaosNone
+		default:
+			log.Fatalf("Unknown chaos mode: %s", *chaos)
+		}
+
+		engine := canary.NewEngine(cfg)
+		report := engine.ShadowSession(session)
+		fmt.Print(canary.RenderCanaryScorecard(report))
+
+		if *strict && (!report.Passed || report.CircuitBreakerTripped) {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1292,6 +1338,7 @@ func printHelp() {
 	fmt.Println("  privacy     Distributed differential privacy token masking & k-anonymity auditing")
 	fmt.Println("  vision      Multi-modal frame-accurate visual state recording & screen grounding attestation")
 	fmt.Println("  ebpf        Ephemeral eBPF kernel socket & system-call interception recorder")
+	fmt.Println("  canary      Canary deployment traffic shadowing & live execution chaos injection")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1324,4 +1371,5 @@ func printHelp() {
 	fmt.Println("  agentvcr privacy -id trace_1 -epsilon 1.0 -k 3 -sanitize -strict")
 	fmt.Println("  agentvcr vision -id trace_1 -strict")
 	fmt.Println("  agentvcr ebpf -id trace_1 -strict")
+	fmt.Println("  agentvcr canary -id trace_1 -chaos latency -rate 0.25 -strict")
 }

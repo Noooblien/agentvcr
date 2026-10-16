@@ -105,7 +105,8 @@ client = OpenAI(
 - [x] Distributed differential privacy token masking & k-anonymity auditing (`privacy`)
 - [x] Multi-modal frame-accurate visual state recording & screen grounding attestation (`vision`)
 - [x] Ephemeral eBPF kernel socket & system-call interception recorder (`ebpf`)
-- [ ] Canary deployment traffic shadowing & live execution chaos injection (`canary`)
+- [x] Canary deployment traffic shadowing & live execution chaos injection (`canary`)
+- [ ] Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation (`pqc`)
 
 ---
 
