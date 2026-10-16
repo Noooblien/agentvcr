@@ -29,6 +29,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/sim"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
 	"github.com/Noooblien/agentvcr/pkg/storage"
+	"github.com/Noooblien/agentvcr/pkg/throttle"
 	"github.com/Noooblien/agentvcr/pkg/trace"
 	"github.com/Noooblien/agentvcr/pkg/tui"
 )
@@ -908,6 +909,45 @@ func main() {
 		lb := leaderboard.BuildLeaderboard(targetSessions, *suiteName)
 		fmt.Print(leaderboard.RenderLeaderboardTable(lb))
 
+	case "throttle":
+		throttleCmd := flag.NewFlagSet("throttle", flag.ExitOnError)
+		sessionID := throttleCmd.String("id", "", "Trace Session ID to audit for rate limiting and latency SLA compliance")
+		maxRPM := throttleCmd.Int("max-rpm", 60, "Maximum requests per minute threshold")
+		maxTPM := throttleCmd.Int("max-tpm", 100000, "Maximum tokens per minute threshold")
+		totalBudgetMs := throttleCmd.Int64("total-budget", 30000, "Total trajectory wall-clock latency SLA ceiling in ms")
+		perStepBudgetMs := throttleCmd.Int64("per-step-budget", 5000, "Per-step execution latency ceiling in ms")
+		burst := throttleCmd.Int("burst", 10, "Token bucket burst capacity allowance")
+		strict := throttleCmd.Bool("strict", false, "Exit with non-zero exit code if throttle or SLA breach is detected")
+		_ = throttleCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr throttle -id <session_id> [-max-rpm <n>] [-max-tpm <n>] [-total-budget <ms>] [-per-step-budget <ms>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		policy := throttle.ThrottlePolicy{
+			MaxRPM:               *maxRPM,
+			MaxTPM:               *maxTPM,
+			TotalLatencyBudgetMs: *totalBudgetMs,
+			PerStepBudgetMs:      *perStepBudgetMs,
+			BurstCapacity:        *burst,
+		}
+
+		report, err := throttle.AuditSession(session, policy)
+		if err != nil {
+			log.Fatalf("Throttle audit failed: %v", err)
+		}
+
+		fmt.Print(throttle.RenderThrottleScorecard(report, policy))
+
+		if *strict && (len(report.Breaches) > 0 || report.LatencySLABreached) {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -937,6 +977,7 @@ func printHelp() {
 	fmt.Println("  policy      Real-time runtime policy governance & zero-trust sandboxing enforcer")
 	fmt.Println("  lineage     Ephemeral execution sandboxing & microsecond state lineage graphs")
 	fmt.Println("  leaderboard Automated synthetic agent benchmark leaderboard & regression diffing")
+	fmt.Println("  throttle    Dynamic latency budget allocator & distributed token rate-limiter")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -960,4 +1001,5 @@ func printHelp() {
 	fmt.Println("  agentvcr lineage -id trace_1 -key auth.token -step 3")
 	fmt.Println("  agentvcr leaderboard -sessions agent_1,agent_2,agent_3")
 	fmt.Println("  agentvcr leaderboard -diff -baseline trace_1 -candidate trace_2 -strict")
+	fmt.Println("  agentvcr throttle -id trace_1 -max-rpm 120 -total-budget 15000 -strict")
 }

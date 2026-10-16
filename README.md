@@ -97,7 +97,8 @@ client = OpenAI(
 - [x] Real-time runtime policy governance & zero-trust sandboxing enforcer (`policy`)
 - [x] Ephemeral execution sandboxing & microsecond state lineage graphs (`lineage`)
 - [x] Automated synthetic agent benchmark leaderboard & regression diffing (`leaderboard`)
-- [ ] Dynamic latency budget allocator & distributed token rate-limiter (`throttle`)
+- [x] Dynamic latency budget allocator & distributed token rate-limiter (`throttle`)
+- [ ] Cross-organization zero-knowledge trajectory attestation & cryptographic zk-proofs (`zkp`)
 
 ---
 
