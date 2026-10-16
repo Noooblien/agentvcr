@@ -101,7 +101,8 @@ client = OpenAI(
 - [x] Cross-organization zero-knowledge trajectory attestation & cryptographic zk-proofs (`zkp`)
 - [x] Adaptive speculative execution rollback & predictive branch caching (`speculate`)
 - [x] Multi-tenant cryptographic namespace isolation & RBAC policy audit (`tenant`)
-- [ ] Ephemeral P2P agent gossip consensus & distributed Byzantine quorum ledger (`gossip`)
+- [x] Ephemeral P2P agent gossip consensus & distributed Byzantine quorum ledger (`gossip`)
+- [ ] Distributed differential privacy token masking & k-anonymity auditing (`privacy`)
 
 ---
 

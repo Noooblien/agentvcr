@@ -20,6 +20,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
+	"github.com/Noooblien/agentvcr/pkg/gossip"
 	"github.com/Noooblien/agentvcr/pkg/leaderboard"
 	"github.com/Noooblien/agentvcr/pkg/lineage"
 	"github.com/Noooblien/agentvcr/pkg/otel"
@@ -1128,6 +1129,29 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "gossip":
+		gossipCmd := flag.NewFlagSet("gossip", flag.ExitOnError)
+		sessionID := gossipCmd.String("id", "", "Trace Session ID to simulate P2P gossip consensus for")
+		peers := gossipCmd.Int("peers", 5, "Number of participating ephemeral peer nodes in the gossip mesh")
+		strict := gossipCmd.Bool("strict", false, "Exit with non-zero exit code if Byzantine divergence or quorum failure is detected")
+		_ = gossipCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr gossip -id <session_id> [-peers <n>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		report := gossip.SimulateSessionGossip(session, *peers)
+		fmt.Print(gossip.RenderGossipScorecard(report))
+
+		if *strict && (!report.QuorumIntegrityOK || report.ByzantinePeers > 0) {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1161,6 +1185,7 @@ func printHelp() {
 	fmt.Println("  zkp         Cross-organization zero-knowledge trajectory attestation & zk-proofs")
 	fmt.Println("  speculate   Adaptive speculative execution rollback & predictive branch caching")
 	fmt.Println("  tenant      Multi-tenant cryptographic namespace isolation & RBAC policy audit")
+	fmt.Println("  gossip      Ephemeral P2P agent gossip consensus & distributed Byzantine quorum ledger")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1189,4 +1214,5 @@ func printHelp() {
 	fmt.Println("  agentvcr zkp -action verify -proof trace_1.zkp.json -strict")
 	fmt.Println("  agentvcr speculate -id trace_1 -min-conf 0.80 -strict")
 	fmt.Println("  agentvcr tenant -id trace_1 -tenant enterprise_corp -block-tool shell_exec -strict")
+	fmt.Println("  agentvcr gossip -id trace_1 -peers 5 -strict")
 }
