@@ -28,6 +28,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/sim"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
+	"github.com/Noooblien/agentvcr/pkg/speculate"
 	"github.com/Noooblien/agentvcr/pkg/storage"
 	"github.com/Noooblien/agentvcr/pkg/throttle"
 	"github.com/Noooblien/agentvcr/pkg/trace"
@@ -1027,6 +1028,63 @@ func main() {
 			log.Fatalf("Unknown zkp action '%s'. Use 'prove' or 'verify'.", *action)
 		}
 
+	case "speculate":
+		specCmd := flag.NewFlagSet("speculate", flag.ExitOnError)
+		sessionID := specCmd.String("id", "", "Trace Session ID to evaluate speculative execution branches for")
+		minConf := specCmd.Float64("min-conf", 0.75, "Minimum confidence threshold for speculative branch commitment")
+		maxDepth := specCmd.Int("max-depth", 3, "Maximum forward speculative execution step depth")
+		strict := specCmd.Bool("strict", false, "Exit with non-zero exit code if mispredictions occur")
+		_ = specCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr speculate -id <session_id> [-min-conf <float>] [-max-depth <n>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		config := speculate.DefaultSpeculateConfig()
+		config.MinConfidenceThreshold = *minConf
+		config.MaxSpeculativeDepth = *maxDepth
+
+		engine := speculate.NewEngine(config)
+
+		// Simulate speculative branch evaluation across recorded session events
+		for i := 0; i < len(session.Events)-1; i += 2 {
+			baseEv := session.Events[i]
+			nextEv := session.Events[i+1]
+
+			b, err := engine.CreateBranch(session.ID, baseEv.Index, baseEv.Payload)
+			if err == nil {
+				savedMs := nextEv.DurationMs
+				if savedMs <= 0 {
+					savedMs = 250
+				}
+				_ = engine.AddSpeculativeStep(b.BranchID, speculate.SpeculativeStep{
+					StepIndex:        nextEv.Index,
+					PredictedType:    string(nextEv.Type),
+					PredictedPayload: nextEv.Payload,
+					ConfidenceScore:  0.88,
+					WallClockSavedMs: savedMs,
+					Timestamp:        nextEv.Timestamp,
+				})
+
+				_, _ = engine.CommitOrRollback(b.BranchID, []trace.TraceEvent{nextEv})
+
+				ctxHash := speculate.ComputeContextHash(session.ID, baseEv.Index, session.Events[:i+1])
+				engine.CachePredictiveBranch(ctxHash, string(nextEv.Type), nextEv.Payload)
+			}
+		}
+
+		report := engine.GenerateSpeculateReport(*sessionID)
+		fmt.Print(speculate.RenderSpeculateScorecard(report))
+
+		if *strict && report.RolledBackBranches > 0 {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1058,6 +1116,7 @@ func printHelp() {
 	fmt.Println("  leaderboard Automated synthetic agent benchmark leaderboard & regression diffing")
 	fmt.Println("  throttle    Dynamic latency budget allocator & distributed token rate-limiter")
 	fmt.Println("  zkp         Cross-organization zero-knowledge trajectory attestation & zk-proofs")
+	fmt.Println("  speculate   Adaptive speculative execution rollback & predictive branch caching")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1084,4 +1143,5 @@ func printHelp() {
 	fmt.Println("  agentvcr throttle -id trace_1 -max-rpm 120 -total-budget 15000 -strict")
 	fmt.Println("  agentvcr zkp -action prove -id trace_1 -proof trace_1.zkp.json -zero-pii")
 	fmt.Println("  agentvcr zkp -action verify -proof trace_1.zkp.json -strict")
+	fmt.Println("  agentvcr speculate -id trace_1 -min-conf 0.80 -strict")
 }

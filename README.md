@@ -99,7 +99,8 @@ client = OpenAI(
 - [x] Automated synthetic agent benchmark leaderboard & regression diffing (`leaderboard`)
 - [x] Dynamic latency budget allocator & distributed token rate-limiter (`throttle`)
 - [x] Cross-organization zero-knowledge trajectory attestation & cryptographic zk-proofs (`zkp`)
-- [ ] Adaptive speculative execution rollback & predictive branch caching (`speculate`)
+- [x] Adaptive speculative execution rollback & predictive branch caching (`speculate`)
+- [ ] Multi-tenant cryptographic namespace isolation & RBAC policy audit (`tenant`)
 
 ---
 
