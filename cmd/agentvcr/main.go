@@ -25,6 +25,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
 	"github.com/Noooblien/agentvcr/pkg/gossip"
+	"github.com/Noooblien/agentvcr/pkg/heal"
 	"github.com/Noooblien/agentvcr/pkg/leaderboard"
 	"github.com/Noooblien/agentvcr/pkg/lineage"
 	"github.com/Noooblien/agentvcr/pkg/otel"
@@ -1416,6 +1417,46 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "heal":
+		healCmd := flag.NewFlagSet("heal", flag.ExitOnError)
+		sessionID := healCmd.String("id", "", "Trace Session ID to diagnose and autonomously repair")
+		apply := healCmd.Bool("apply", true, "Auto-apply synthesized AST patches to produce a repaired trajectory clone")
+		outPath := healCmd.String("out", "", "Output path for the repaired session JSON file")
+		strict := healCmd.Bool("strict", false, "Exit with non-zero exit code if any faults cannot be cleanly repaired")
+		_ = healCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr heal -id <session_id> [-apply] [-out <path>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		healer := heal.NewHealer(*apply)
+		healedSession, report, err := healer.HealSession(session)
+		if err != nil {
+			log.Fatalf("Autonomous trajectory healing failed: %v", err)
+		}
+
+		fmt.Print(heal.RenderHealScorecard(report))
+
+		if *apply && report.PatchesApplied > 0 {
+			dest := *outPath
+			if dest == "" {
+				dest = fmt.Sprintf("./.vcr_traces/%s.vcr.json", healedSession.ID)
+			}
+			if err := store.SaveSession(healedSession); err != nil {
+				log.Fatalf("Failed to persist healed session: %v", err)
+			}
+			fmt.Printf("🩹 [AgentVCR] Saved healed trajectory clone to: %s\n\n", dest)
+		}
+
+		if *strict && !report.AutoAppliedCleanly {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1456,6 +1497,7 @@ func printHelp() {
 	fmt.Println("  canary      Canary deployment traffic shadowing & live execution chaos injection")
 	fmt.Println("  pqc         Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation")
 	fmt.Println("  raft        Multi-region active-active trajectory replication & Raft ledger sync")
+	fmt.Println("  heal        Autonomous self-healing trajectory patch synthesizer & AST repair engine")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1491,4 +1533,5 @@ func printHelp() {
 	fmt.Println("  agentvcr canary -id trace_1 -chaos latency -rate 0.25 -strict")
 	fmt.Println("  agentvcr pqc -id trace_1 -algo dilithium3 -kem -strict")
 	fmt.Println("  agentvcr raft -id trace_1 -nodes 3 -strict")
+	fmt.Println("  agentvcr heal -id trace_1 -apply -strict")
 }

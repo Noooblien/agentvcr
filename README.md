@@ -108,7 +108,8 @@ client = OpenAI(
 - [x] Canary deployment traffic shadowing & live execution chaos injection (`canary`)
 - [x] Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation (`pqc`)
 - [x] Multi-region active-active trajectory replication & Raft ledger sync (`raft`)
-- [ ] Autonomous self-healing trajectory patch synthesizer & AST repair engine (`heal`)
+- [x] Autonomous self-healing trajectory patch synthesizer & AST repair engine (`heal`)
+- [ ] Confidential computing hardware enclave attestation & AMD SEV-SNP verification (`enclave`)
 
 ---
 
