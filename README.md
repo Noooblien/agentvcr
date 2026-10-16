@@ -112,7 +112,8 @@ client = OpenAI(
 - [x] Confidential computing hardware enclave attestation & AMD SEV-SNP verification (`enclave`)
 - [x] Automated prompt-leakage side-channel analyzer & differential cache-timing forensics (`timing`)
 - [x] Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox (`wasi`)
-- [ ] Autonomous synthetic multi-agent red-team prompt injection harness (`redteam`)
+- [x] Autonomous synthetic multi-agent red-team prompt injection harness (`redteam`)
+- [ ] Formally verified state-machine temporal logic model checker (`tlaplus`)
 
 ---
 

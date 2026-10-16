@@ -35,6 +35,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/privacy"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/raft"
+	"github.com/Noooblien/agentvcr/pkg/redteam"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/sim"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
@@ -1589,6 +1590,47 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "redteam":
+		redteamCmd := flag.NewFlagSet("redteam", flag.ExitOnError)
+		sessionID := redteamCmd.String("id", "", "Trace Session ID to evaluate under multi-agent red-team harness")
+		rounds := redteamCmd.Int("rounds", 3, "Number of multi-agent adversarial probe rounds")
+		stopOnCritical := redteamCmd.Bool("stop-on-critical", false, "Halt campaign immediately upon first critical breach")
+		strict := redteamCmd.Bool("strict", false, "Exit with non-zero exit code if resilience < 80% or critical breaches > 0")
+		_ = redteamCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr redteam -id <session_id> [-rounds <n>] [-stop-on-critical] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		cfg := redteam.DefaultCampaignConfig(*sessionID)
+		if *rounds > 0 {
+			cfg.Rounds = *rounds
+		}
+		cfg.StopOnCritical = *stopOnCritical
+		cfg.StrictScorecard = *strict
+
+		engine := redteam.NewRedTeamEngine()
+		campaign, err := engine.SynthesizeCampaign(session, cfg)
+		if err != nil {
+			log.Fatalf("Failed to synthesize red-team campaign: %v", err)
+		}
+
+		report, err := engine.ExecuteCampaign(session, campaign)
+		if err != nil {
+			log.Fatalf("Failed to execute red-team campaign: %v", err)
+		}
+
+		fmt.Print(redteam.RenderRedTeamScorecard(report))
+
+		if *strict && (report.ResilienceScore < 80.0 || report.CriticalBreaches > 0) {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1633,6 +1675,7 @@ func printHelp() {
 	fmt.Println("  enclave     Confidential computing hardware enclave attestation & AMD SEV-SNP verification")
 	fmt.Println("  timing      Automated prompt-leakage side-channel analyzer & differential cache-timing forensics")
 	fmt.Println("  wasi        Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox")
+	fmt.Println("  redteam     Autonomous synthetic multi-agent red-team prompt injection harness")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1672,4 +1715,5 @@ func printHelp() {
 	fmt.Println("  agentvcr enclave -id trace_1 -strict")
 	fmt.Println("  agentvcr timing -id trace_1 -max-leak-bits 4.0 -pad -strict")
 	fmt.Println("  agentvcr wasi -id trace_1 -fuel 1000000 -strict")
+	fmt.Println("  agentvcr redteam -id trace_1 -rounds 3 -strict")
 }
