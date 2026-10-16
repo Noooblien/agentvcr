@@ -107,7 +107,8 @@ client = OpenAI(
 - [x] Ephemeral eBPF kernel socket & system-call interception recorder (`ebpf`)
 - [x] Canary deployment traffic shadowing & live execution chaos injection (`canary`)
 - [x] Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation (`pqc`)
-- [ ] Multi-region active-active trajectory replication & Raft ledger sync (`raft`)
+- [x] Multi-region active-active trajectory replication & Raft ledger sync (`raft`)
+- [ ] Autonomous self-healing trajectory patch synthesizer & AST repair engine (`heal`)
 
 ---
 

@@ -32,6 +32,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/pqc"
 	"github.com/Noooblien/agentvcr/pkg/privacy"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
+	"github.com/Noooblien/agentvcr/pkg/raft"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/sim"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
@@ -1379,6 +1380,42 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "raft":
+		raftCmd := flag.NewFlagSet("raft", flag.ExitOnError)
+		sessionID := raftCmd.String("id", "", "Trace Session ID to replicate across multi-region Raft cluster")
+		nodesCount := raftCmd.Int("nodes", 3, "Number of cluster nodes (3 or 5)")
+		strict := raftCmd.Bool("strict", false, "Exit with non-zero exit code if cross-region consensus fails")
+		_ = raftCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr raft -id <session_id> [-nodes <3|5>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		cfg := raft.DefaultRegionalTopology()
+		if *nodesCount == 5 {
+			cfg.Nodes = append(cfg.Nodes,
+				raft.NodeConfig{NodeID: "agentvcr-us-west-2", Region: "us-west-2 (Oregon)", LatencyRTTMs: 65},
+				raft.NodeConfig{NodeID: "agentvcr-sa-east-1", Region: "sa-east-1 (São Paulo)", LatencyRTTMs: 120},
+			)
+		}
+
+		cluster := raft.NewRaftCluster(cfg)
+		report, err := cluster.ReplicateSession(session)
+		if err != nil {
+			log.Fatalf("Cross-region Raft replication failed: %v", err)
+		}
+
+		fmt.Print(raft.RenderRaftScorecard(report))
+
+		if *strict && !report.CrossRegionSyncPassed {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1418,6 +1455,7 @@ func printHelp() {
 	fmt.Println("  ebpf        Ephemeral eBPF kernel socket & system-call interception recorder")
 	fmt.Println("  canary      Canary deployment traffic shadowing & live execution chaos injection")
 	fmt.Println("  pqc         Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation")
+	fmt.Println("  raft        Multi-region active-active trajectory replication & Raft ledger sync")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1452,4 +1490,5 @@ func printHelp() {
 	fmt.Println("  agentvcr ebpf -id trace_1 -strict")
 	fmt.Println("  agentvcr canary -id trace_1 -chaos latency -rate 0.25 -strict")
 	fmt.Println("  agentvcr pqc -id trace_1 -algo dilithium3 -kem -strict")
+	fmt.Println("  agentvcr raft -id trace_1 -nodes 3 -strict")
 }
