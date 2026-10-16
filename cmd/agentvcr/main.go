@@ -7,11 +7,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Noooblien/agentvcr/pkg/attest"
 	"github.com/Noooblien/agentvcr/pkg/bench"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
+	"github.com/Noooblien/agentvcr/pkg/consensus"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/diff"
 	"github.com/Noooblien/agentvcr/pkg/eval"
@@ -615,6 +617,52 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "consensus":
+		consensusCmd := flag.NewFlagSet("consensus", flag.ExitOnError)
+		sessionID := consensusCmd.String("id", "", "Single trace session ID or multi-agent coordinator trace")
+		sessionsList := consensusCmd.String("sessions", "", "Comma-separated list of swarm session IDs")
+		quorum := consensusCmd.Float64("quorum", 0.67, "Supermajority quorum threshold (e.g. 0.67 for 2/3 + 1)")
+		strict := consensusCmd.Bool("strict", false, "Exit with non-zero status if Byzantine faults detected or consensus fails")
+		_ = consensusCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" && *sessionsList == "" {
+			log.Fatal("Usage: agentvcr consensus [-id <session_id> | -sessions s1,s2,...] [-quorum 0.67] [-strict]")
+		}
+
+		var targetSessionIDs []string
+		if *sessionsList != "" {
+			parts := strings.Split(*sessionsList, ",")
+			for _, p := range parts {
+				trimmed := strings.TrimSpace(p)
+				if trimmed != "" {
+					targetSessionIDs = append(targetSessionIDs, trimmed)
+				}
+			}
+		} else {
+			targetSessionIDs = []string{*sessionID}
+		}
+
+		var loadedSessions []*trace.Session
+		for _, sID := range targetSessionIDs {
+			s, err := store.LoadSession(sID)
+			if err != nil {
+				log.Fatalf("Error loading session %s: %v", sID, err)
+			}
+			loadedSessions = append(loadedSessions, s)
+		}
+
+		engine := consensus.NewEngine(*quorum)
+		report, err := engine.AnalyzeSessions(loadedSessions, *quorum)
+		if err != nil {
+			log.Fatalf("Consensus analysis failed: %v", err)
+		}
+
+		fmt.Print(consensus.RenderConsensusScorecard(report))
+
+		if *strict && (!report.IsByzantineResilient || report.ConsensusRate < 1.0) {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -638,6 +686,7 @@ func printHelp() {
 	fmt.Println("  verify    Validate cryptographic attestation & verify zero tampering")
 	fmt.Println("  sim       Offline mock tool synthesizer and deterministic synthetic simulator")
 	fmt.Println("  bench     Agentic memory regression tester & long-horizon recall benchmarks")
+	fmt.Println("  consensus Multi-agent consensus & Byzantine fault detection replay harness")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -654,4 +703,5 @@ func printHelp() {
 	fmt.Println("  agentvcr verify -id trace_1 -cert trace_1.cert.json")
 	fmt.Println("  agentvcr sim -mode run -id trace_1 -mocks mocks.json")
 	fmt.Println("  agentvcr bench -id trace_1 -needle 'AUTH_KEY_123' -intro-step 1 -probe-step 5")
+	fmt.Println("  agentvcr consensus -sessions agent_1,agent_2,agent_3 -quorum 0.67")
 }

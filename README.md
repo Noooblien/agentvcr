@@ -91,7 +91,8 @@ client = OpenAI(
 - [x] Cryptographic trajectory signing & immutable tamper-proof attestation (`verify`)
 - [x] WASM-sandboxed mock tool synthesizers & offline synthetic simulator (`sim`)
 - [x] Agentic memory regression tester & long-horizon recall benchmarks (`bench`)
-- [ ] Multi-agent consensus & Byzantine fault detection replay harness (`consensus`)
+- [x] Multi-agent consensus & Byzantine fault detection replay harness (`consensus`)
+- [ ] Semantic vector search & RAG hallucination replay forensics (`forensics`)
 
 ---
 
