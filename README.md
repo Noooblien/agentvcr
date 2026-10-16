@@ -95,7 +95,8 @@ client = OpenAI(
 - [x] Semantic vector search & RAG hallucination replay forensics (`forensics`)
 - [x] Cross-trajectory causal DAG synthesizer & automated root-cause repair engine (`causal`)
 - [x] Real-time runtime policy governance & zero-trust sandboxing enforcer (`policy`)
-- [ ] Ephemeral execution sandboxing & microsecond state lineage graphs (`lineage`)
+- [x] Ephemeral execution sandboxing & microsecond state lineage graphs (`lineage`)
+- [ ] Automated synthetic agent benchmark leaderboard & regression diffing (`leaderboard`)
 
 ---
 

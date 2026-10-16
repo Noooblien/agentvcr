@@ -20,6 +20,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
+	"github.com/Noooblien/agentvcr/pkg/lineage"
 	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/policy"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
@@ -812,6 +813,34 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "lineage":
+		lineageCmd := flag.NewFlagSet("lineage", flag.ExitOnError)
+		sessionID := lineageCmd.String("id", "", "Trace Session ID to extract microsecond state lineage graph")
+		key := lineageCmd.String("key", "", "Filter lineage history for a specific state variable/key (optional)")
+		step := lineageCmd.Int("step", -1, "Target step to reconstruct time-travel sandbox state snapshot (default: all)")
+		strict := lineageCmd.Bool("strict", false, "Exit with non-zero exit code if state divergence hazards are detected")
+		_ = lineageCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr lineage -id <session_id> [-key <var>] [-step <n>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		report, err := lineage.GenerateLineageReport(session, *key, *step)
+		if err != nil {
+			log.Fatalf("Lineage extraction failed: %v", err)
+		}
+
+		fmt.Print(lineage.RenderLineageScorecard(report))
+
+		if *strict && !report.EphemeralSandboxValid {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -839,6 +868,7 @@ func printHelp() {
 	fmt.Println("  forensics Semantic vector search & RAG hallucination replay forensics")
 	fmt.Println("  causal    Cross-trajectory causal DAG synthesizer & automated root-cause repair engine")
 	fmt.Println("  policy    Real-time runtime policy governance & zero-trust sandboxing enforcer")
+	fmt.Println("  lineage   Ephemeral execution sandboxing & microsecond state lineage graphs")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -859,4 +889,5 @@ func printHelp() {
 	fmt.Println("  agentvcr forensics -id trace_1 -threshold 0.35 -strict")
 	fmt.Println("  agentvcr causal -id trace_1 -repair")
 	fmt.Println("  agentvcr policy -id trace_1 -forbid 'rm -rf' -block-host 169.254.169.254 -strict")
+	fmt.Println("  agentvcr lineage -id trace_1 -key auth.token -step 3")
 }
