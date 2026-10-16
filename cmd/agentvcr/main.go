@@ -42,6 +42,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/storage"
 	"github.com/Noooblien/agentvcr/pkg/tenant"
 	"github.com/Noooblien/agentvcr/pkg/throttle"
+	"github.com/Noooblien/agentvcr/pkg/timing"
 	"github.com/Noooblien/agentvcr/pkg/trace"
 	"github.com/Noooblien/agentvcr/pkg/tui"
 	"github.com/Noooblien/agentvcr/pkg/vision"
@@ -1516,6 +1517,44 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "timing":
+		timingCmd := flag.NewFlagSet("timing", flag.ExitOnError)
+		sessionID := timingCmd.String("id", "", "Trace Session ID to analyze for timing side-channel leakage")
+		maxBits := timingCmd.Float64("max-leak-bits", 4.0, "Maximum permissible mutual information leakage in bits")
+		pad := timingCmd.Bool("pad", true, "Synthesize constant-time bucketed jitter padding clone")
+		outPath := timingCmd.String("out", "", "Output path for the padded trajectory session JSON")
+		strict := timingCmd.Bool("strict", false, "Exit with non-zero exit code if timing leakage breaches threshold")
+		_ = timingCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr timing -id <session_id> [-max-leak-bits <f>] [-pad] [-out <path>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		analyzer := timing.NewAnalyzer(*maxBits, *pad)
+		report, paddedSession := analyzer.AnalyzeSession(session)
+
+		fmt.Print(timing.RenderTimingScorecard(report))
+
+		if *pad && paddedSession != nil {
+			dest := *outPath
+			if dest == "" {
+				dest = fmt.Sprintf("./.vcr_traces/%s.vcr.json", paddedSession.ID)
+			}
+			if err := store.SaveSession(paddedSession); err != nil {
+				log.Fatalf("Failed to save padded session: %v", err)
+			}
+			fmt.Printf("⏱️  [AgentVCR] Saved constant-time padded trajectory clone to: %s\n\n", dest)
+		}
+
+		if *strict && !report.TimingLeakagePassed {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1558,6 +1597,7 @@ func printHelp() {
 	fmt.Println("  raft        Multi-region active-active trajectory replication & Raft ledger sync")
 	fmt.Println("  heal        Autonomous self-healing trajectory patch synthesizer & AST repair engine")
 	fmt.Println("  enclave     Confidential computing hardware enclave attestation & AMD SEV-SNP verification")
+	fmt.Println("  timing      Automated prompt-leakage side-channel analyzer & differential cache-timing forensics")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1595,4 +1635,5 @@ func printHelp() {
 	fmt.Println("  agentvcr raft -id trace_1 -nodes 3 -strict")
 	fmt.Println("  agentvcr heal -id trace_1 -apply -strict")
 	fmt.Println("  agentvcr enclave -id trace_1 -strict")
+	fmt.Println("  agentvcr timing -id trace_1 -max-leak-bits 4.0 -pad -strict")
 }

@@ -110,7 +110,8 @@ client = OpenAI(
 - [x] Multi-region active-active trajectory replication & Raft ledger sync (`raft`)
 - [x] Autonomous self-healing trajectory patch synthesizer & AST repair engine (`heal`)
 - [x] Confidential computing hardware enclave attestation & AMD SEV-SNP verification (`enclave`)
-- [ ] Automated prompt-leakage side-channel analyzer & differential cache-timing forensics (`timing`)
+- [x] Automated prompt-leakage side-channel analyzer & differential cache-timing forensics (`timing`)
+- [ ] Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox (`wasi`)
 
 ---
 
