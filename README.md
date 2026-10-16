@@ -109,7 +109,8 @@ client = OpenAI(
 - [x] Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation (`pqc`)
 - [x] Multi-region active-active trajectory replication & Raft ledger sync (`raft`)
 - [x] Autonomous self-healing trajectory patch synthesizer & AST repair engine (`heal`)
-- [ ] Confidential computing hardware enclave attestation & AMD SEV-SNP verification (`enclave`)
+- [x] Confidential computing hardware enclave attestation & AMD SEV-SNP verification (`enclave`)
+- [ ] Automated prompt-leakage side-channel analyzer & differential cache-timing forensics (`timing`)
 
 ---
 

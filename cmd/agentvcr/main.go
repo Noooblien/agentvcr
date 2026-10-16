@@ -21,6 +21,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/diff"
 	"github.com/Noooblien/agentvcr/pkg/ebpf"
+	"github.com/Noooblien/agentvcr/pkg/enclave"
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
@@ -1457,6 +1458,64 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "enclave":
+		enclaveCmd := flag.NewFlagSet("enclave", flag.ExitOnError)
+		sessionID := enclaveCmd.String("id", "", "Trace Session ID to attest with AMD SEV-SNP hardware quote")
+		nonce := enclaveCmd.String("nonce", "", "Cryptographic attestation freshness nonce")
+		quoteOut := enclaveCmd.String("out", "", "Output path for the signed attestation quote JSON file")
+		strict := enclaveCmd.Bool("strict", false, "Exit with non-zero exit code if hardware enclave verification fails")
+		_ = enclaveCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr enclave -id <session_id> [-nonce <hex>] [-out <path>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		freshNonce := *nonce
+		if freshNonce == "" {
+			freshNonce = fmt.Sprintf("nonce_%d_%x", time.Now().UnixNano(), rand.Reader)
+		}
+
+		rootKey, err := enclave.GenerateHardwareRootKey()
+		if err != nil {
+			log.Fatalf("Failed to initialize hardware root of trust: %v", err)
+		}
+
+		quote, err := enclave.GenerateAttestationQuote(session, freshNonce, rootKey)
+		if err != nil {
+			log.Fatalf("Hardware quote generation failed: %v", err)
+		}
+
+		destQuote := *quoteOut
+		if destQuote == "" {
+			destQuote = fmt.Sprintf("./.vcr_traces/%s.enclave.quote.json", *sessionID)
+		}
+		quoteJSON, _ := json.MarshalIndent(quote, "", "  ")
+		_ = os.WriteFile(destQuote, quoteJSON, 0644)
+
+		ver := enclave.VerifyAttestationQuote(session, quote, rootKey, freshNonce)
+
+		report := &enclave.EnclaveScorecardReport{
+			SessionID:          *sessionID,
+			Quote:              *quote,
+			Verification:       ver,
+			EventCountAttested: len(session.Events),
+			EnclavePassed:      ver.Valid,
+			HardwareTrustTier:  "AMD SEV-SNP Hardware TEE Silicon Root-of-Trust",
+			GeneratedAt:        time.Now().UTC(),
+		}
+
+		fmt.Print(enclave.RenderEnclaveScorecard(report))
+		fmt.Printf("🔒 [AgentVCR] Hardware quote written to: %s\n\n", destQuote)
+
+		if *strict && !ver.Valid {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1498,6 +1557,7 @@ func printHelp() {
 	fmt.Println("  pqc         Post-quantum ML-KEM & Dilithium cryptographic trajectory attestation")
 	fmt.Println("  raft        Multi-region active-active trajectory replication & Raft ledger sync")
 	fmt.Println("  heal        Autonomous self-healing trajectory patch synthesizer & AST repair engine")
+	fmt.Println("  enclave     Confidential computing hardware enclave attestation & AMD SEV-SNP verification")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1534,4 +1594,5 @@ func printHelp() {
 	fmt.Println("  agentvcr pqc -id trace_1 -algo dilithium3 -kem -strict")
 	fmt.Println("  agentvcr raft -id trace_1 -nodes 3 -strict")
 	fmt.Println("  agentvcr heal -id trace_1 -apply -strict")
+	fmt.Println("  agentvcr enclave -id trace_1 -strict")
 }
