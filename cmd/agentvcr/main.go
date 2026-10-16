@@ -17,6 +17,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/diff"
 	"github.com/Noooblien/agentvcr/pkg/eval"
+	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
 	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
@@ -663,6 +664,34 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "forensics":
+		forensicsCmd := flag.NewFlagSet("forensics", flag.ExitOnError)
+		sessionID := forensicsCmd.String("id", "", "Trace Session ID to audit for RAG hallucinations")
+		threshold := forensicsCmd.Float64("threshold", 0.35, "Semantic cosine similarity threshold (default 0.35)")
+		strict := forensicsCmd.Bool("strict", false, "Exit with non-zero status if ungrounded claims or hallucinations detected")
+		_ = forensicsCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr forensics -id <session_id> [-threshold 0.35] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		analyzer := forensics.NewAnalyzer(*threshold)
+		report, err := analyzer.AuditTrajectory(session)
+		if err != nil {
+			log.Fatalf("Forensics audit failed: %v", err)
+		}
+
+		fmt.Print(forensics.RenderForensicScorecard(report))
+
+		if *strict && !report.PassedAudit {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -687,6 +716,7 @@ func printHelp() {
 	fmt.Println("  sim       Offline mock tool synthesizer and deterministic synthetic simulator")
 	fmt.Println("  bench     Agentic memory regression tester & long-horizon recall benchmarks")
 	fmt.Println("  consensus Multi-agent consensus & Byzantine fault detection replay harness")
+	fmt.Println("  forensics Semantic vector search & RAG hallucination replay forensics")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -704,4 +734,5 @@ func printHelp() {
 	fmt.Println("  agentvcr sim -mode run -id trace_1 -mocks mocks.json")
 	fmt.Println("  agentvcr bench -id trace_1 -needle 'AUTH_KEY_123' -intro-step 1 -probe-step 5")
 	fmt.Println("  agentvcr consensus -sessions agent_1,agent_2,agent_3 -quorum 0.67")
+	fmt.Println("  agentvcr forensics -id trace_1 -threshold 0.35 -strict")
 }
