@@ -81,3 +81,20 @@ func TestTraceRecordAndFork(t *testing.T) {
 		t.Fatalf("expected fork_at_step 2, got %d", forked.ForkAtStep)
 	}
 }
+
+func TestStorage_TraceCompression(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"evt_1","payload":"simulated long agent trajectory with massive context payload"}]}`)
+	compressed, err := storage.CompressTracePayload(raw, storage.AlgorithmGzip)
+	if err != nil {
+		t.Fatalf("compression failed: %v", err)
+	}
+
+	decompressed, err := storage.DecompressTracePayload(compressed)
+	if err != nil {
+		t.Fatalf("decompression failed: %v", err)
+	}
+
+	if string(decompressed) != string(raw) {
+		t.Fatalf("decompressed data mismatch: expected %s, got %s", string(raw), string(decompressed))
+	}
+}
