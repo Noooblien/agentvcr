@@ -103,7 +103,8 @@ client = OpenAI(
 - [x] Multi-tenant cryptographic namespace isolation & RBAC policy audit (`tenant`)
 - [x] Ephemeral P2P agent gossip consensus & distributed Byzantine quorum ledger (`gossip`)
 - [x] Distributed differential privacy token masking & k-anonymity auditing (`privacy`)
-- [ ] Multi-modal frame-accurate visual state recording & screen grounding attestation (`vision`)
+- [x] Multi-modal frame-accurate visual state recording & screen grounding attestation (`vision`)
+- [ ] Ephemeral eBPF kernel socket & system-call interception recorder (`ebpf`)
 
 ---
 

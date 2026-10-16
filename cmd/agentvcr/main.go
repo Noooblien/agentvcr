@@ -36,6 +36,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/throttle"
 	"github.com/Noooblien/agentvcr/pkg/trace"
 	"github.com/Noooblien/agentvcr/pkg/tui"
+	"github.com/Noooblien/agentvcr/pkg/vision"
 	"github.com/Noooblien/agentvcr/pkg/zkp"
 )
 
@@ -1203,6 +1204,28 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "vision":
+		visCmd := flag.NewFlagSet("vision", flag.ExitOnError)
+		sessionID := visCmd.String("id", "", "Trace Session ID to audit for visual state grounding and screen alignment")
+		strict := visCmd.Bool("strict", false, "Exit with non-zero exit code if misgrounded actions or visual drift is detected")
+		_ = visCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr vision -id <session_id> [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		_, report := vision.SimulateTrajectoryVision(session)
+		fmt.Print(vision.RenderVisionScorecard(report))
+
+		if *strict && (!report.Passed || report.MisgroundedActions > 0 || report.VisualDriftDetected) {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1238,6 +1261,7 @@ func printHelp() {
 	fmt.Println("  tenant      Multi-tenant cryptographic namespace isolation & RBAC policy audit")
 	fmt.Println("  gossip      Ephemeral P2P agent gossip consensus & distributed Byzantine quorum ledger")
 	fmt.Println("  privacy     Distributed differential privacy token masking & k-anonymity auditing")
+	fmt.Println("  vision      Multi-modal frame-accurate visual state recording & screen grounding attestation")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1268,4 +1292,5 @@ func printHelp() {
 	fmt.Println("  agentvcr tenant -id trace_1 -tenant enterprise_corp -block-tool shell_exec -strict")
 	fmt.Println("  agentvcr gossip -id trace_1 -peers 5 -strict")
 	fmt.Println("  agentvcr privacy -id trace_1 -epsilon 1.0 -k 3 -sanitize -strict")
+	fmt.Println("  agentvcr vision -id trace_1 -strict")
 }
