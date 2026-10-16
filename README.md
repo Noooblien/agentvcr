@@ -116,7 +116,8 @@ client = OpenAI(
 - [x] Formally verified state-machine temporal logic model checker (`tlaplus`)
 - [x] Distributed multi-agent semantic consensus ledger & Byzantine fault recovery (`byzantine`)
 - [x] Autonomous cross-agent covert communication channel detector & steganography analyzer (`stego`)
-- [ ] Real-time dynamic symbolic taint-tracking engine & zero-leakage data flow graph (`taint`)
+- [x] Real-time dynamic taint-tracking engine & Non-Interference Information Flow Control (`taint`)
+- [ ] Autonomous cross-agent behavioral drift & entropy-guided policy synthesis (`drift`)
 
 ---
 
