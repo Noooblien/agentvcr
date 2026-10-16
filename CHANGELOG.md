@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bidirectional Model Context Protocol (MCP) Interceptor (`pkg/mcp`)**: Real-time stdio/SSE JSON-RPC 2.0 frame capture, canonical SHA-256 argument hashing, and monotonic latency telemetry.
+- **Deterministic Virtual MCP Server & Replayer**: Zero-side-effect mock tool replay matching recorded argument digests, supporting configurable simulated latency and synthetic fault injection.
+- **MCP Argument Schema & Prompt Injection Guard (`pkg/mcp/validator.go`)**: Pre-execution argument type checking and OWASP-LLM prompt injection defense with formatted terminal scorecards.
+- Docker & Copy-on-Write (CoW) layered filesystem snapshot driver with OCI whiteouts and $O(1)$ trajectory branching.
 - Terminal TUI visual color themes (Monokai, Dracula, Gruvbox, Nord) and interactive vi keybindings (`j`/`k`/`f`/`t`/`?`/`q`).
 - Instant trajectory branching at any step index preserving causal lineage metadata.
 - Asynchronous OpenTelemetry OTLP collector exporter with background worker queue, exponential backoff, and W3C traceparent context.

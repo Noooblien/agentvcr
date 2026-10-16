@@ -31,6 +31,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/heal"
 	"github.com/Noooblien/agentvcr/pkg/leaderboard"
 	"github.com/Noooblien/agentvcr/pkg/lineage"
+	"github.com/Noooblien/agentvcr/pkg/mcp"
 	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/policy"
 	"github.com/Noooblien/agentvcr/pkg/pqc"
@@ -1846,6 +1847,93 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "mcp":
+		mcpCmd := flag.NewFlagSet("mcp", flag.ExitOnError)
+		action := mcpCmd.String("action", "demo", "MCP action: 'demo', 'audit', or 'mock'")
+		sessionID := mcpCmd.String("id", "", "Trace Session ID to audit or seed mock from")
+		strict := mcpCmd.Bool("strict", false, "Exit with non-zero exit code if MCP security violations are detected")
+		_ = mcpCmd.Parse(os.Args[2:])
+
+		switch *action {
+		case "demo":
+			fmt.Println("\033[1;35m========================================================================================\033[0m")
+			fmt.Println("  \033[1;37mAGENTVCR // MODEL CONTEXT PROTOCOL (MCP) INTERCEPTOR & REPLAY DEMO\033[0m")
+			fmt.Println("\033[1;35m========================================================================================\033[0m")
+
+			interceptor := mcp.NewInterceptor()
+			validator := mcp.NewValidator()
+
+			fmt.Println("  1. Intercepting Client tools/call Frame:")
+			callFrame := []byte(`{"jsonrpc":"2.0","id":"mcp-1","method":"tools/call","params":{"name":"bash","arguments":{"command":"ls -la /workspace"}}}`)
+			event, _ := interceptor.ProcessClientFrame(callFrame)
+			fmt.Printf("     • Intercepted Tool: \033[36m%v\033[0m\n", event.Payload["tool_name"])
+			fmt.Printf("     • Canonical Arg Hash: \033[33m%v\033[0m\n", event.Payload["arguments_hash"])
+
+			fmt.Println("\n  2. Validating Argument Schemas & Guardrails:")
+			schema := mcp.ToolInputSchema{
+				Type:     "object",
+				Required: []string{"command"},
+				Properties: map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+			}
+			valRes := validator.ValidateArguments(schema, map[string]interface{}{"command": "ls -la /workspace"})
+			fmt.Print(validator.RenderSecurityReport(valRes))
+
+			fmt.Println("  3. Simulating Server Tool Result & Attestation:")
+			resFrame := []byte(`{"jsonrpc":"2.0","id":"mcp-1","result":{"content":[{"type":"text","text":"total 42\ndrwxr-xr-x 2 user user 4096 Oct 17 05:00 src"}],"isError":false}}`)
+			resEvent, recorded, _ := interceptor.ProcessServerFrame(resFrame)
+			fmt.Printf("     • Recorded Latency: \033[32m%d ms\033[0m\n", resEvent.DurationMs)
+			fmt.Printf("     • SHA-256 Checksum: \033[35m%s\033[0m\n", resEvent.Checksum)
+
+			fmt.Println("\n  4. Deterministic Virtual Replay (Zero External Execution):")
+			virtualServer := mcp.NewVirtualMCPServer("AgentVCR-Virtual", "1.0.0")
+			virtualServer.SeedRecordedCalls([]mcp.MCPRecordedCall{*recorded})
+
+			replayReq := []byte(`{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{"name":"bash","arguments":{"command":"ls -la /workspace"}}}`)
+			replayResp, _ := virtualServer.HandleMessage(replayReq)
+			fmt.Printf("     • Virtual Server Replay Output: \033[32m%s\033[0m\n\n", string(replayResp))
+
+		case "audit":
+			if *sessionID == "" {
+				log.Fatal("Usage: agentvcr mcp -action audit -id <session_id> [-strict]")
+			}
+			session, err := store.LoadSession(*sessionID)
+			if err != nil {
+				log.Fatalf("Error loading session %s: %v", *sessionID, err)
+			}
+
+			validator := mcp.NewValidator()
+			totalToolCalls := 0
+			violationsCount := 0
+
+			fmt.Printf("\n[AgentVCR] Auditing MCP Tool Calls in Session: %s\n", session.ID)
+			for _, ev := range session.Events {
+				if ev.Type == trace.EventToolCall {
+					totalToolCalls++
+					args, _ := ev.Payload["arguments"].(map[string]interface{})
+					if args == nil {
+						args = make(map[string]interface{})
+					}
+					toolName, _ := ev.Payload["tool_name"].(string)
+
+					res := validator.ValidateArguments(mcp.ToolInputSchema{Type: "object"}, args)
+					if !res.Valid {
+						violationsCount += len(res.Violations)
+						fmt.Printf("  • Tool '%s' Step #%d: %s\n", toolName, ev.Index, validator.RenderSecurityReport(res))
+					}
+				}
+			}
+
+			fmt.Printf("\nAudit Complete: %d MCP tool calls inspected, %d security violations detected.\n\n", totalToolCalls, violationsCount)
+			if *strict && violationsCount > 0 {
+				os.Exit(1)
+			}
+
+		default:
+			log.Fatalf("Unknown mcp action '%s'. Use 'demo' or 'audit'.", *action)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1896,6 +1984,7 @@ func printHelp() {
 	fmt.Println("  stego       Autonomous cross-agent covert communication channel detector & steganography analyzer")
 	fmt.Println("  taint       Dynamic Information Flow Control (IFC) taint tracker & Non-Interference auditor")
 	fmt.Println("  drift       Autonomous cross-agent behavioral drift & entropy-guided policy synthesis")
+	fmt.Println("  mcp         Model Context Protocol stdio/SSE interceptor, validator & virtual replay")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1939,4 +2028,5 @@ func printHelp() {
 	fmt.Println("  agentvcr tlaplus -id trace_1 -out spec.tla -strict")
 	fmt.Println("  agentvcr byzantine -nodes 4 -rounds 3 -strict")
 	fmt.Println("  agentvcr stego -id trace_1 -entropy 4.85 -strict")
+	fmt.Println("  agentvcr mcp -action demo")
 }
