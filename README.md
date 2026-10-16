@@ -102,7 +102,8 @@ client = OpenAI(
 - [x] Adaptive speculative execution rollback & predictive branch caching (`speculate`)
 - [x] Multi-tenant cryptographic namespace isolation & RBAC policy audit (`tenant`)
 - [x] Ephemeral P2P agent gossip consensus & distributed Byzantine quorum ledger (`gossip`)
-- [ ] Distributed differential privacy token masking & k-anonymity auditing (`privacy`)
+- [x] Distributed differential privacy token masking & k-anonymity auditing (`privacy`)
+- [ ] Multi-modal frame-accurate visual state recording & screen grounding attestation (`vision`)
 
 ---
 

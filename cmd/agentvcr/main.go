@@ -25,6 +25,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/lineage"
 	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/policy"
+	"github.com/Noooblien/agentvcr/pkg/privacy"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/sim"
@@ -1152,6 +1153,56 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "privacy":
+		privCmd := flag.NewFlagSet("privacy", flag.ExitOnError)
+		sessionID := privCmd.String("id", "", "Trace Session ID to audit for differential privacy and k-anonymity")
+		epsilon := privCmd.Float64("epsilon", 1.0, "Differential privacy loss parameter (epsilon ε)")
+		k := privCmd.Int("k", 3, "Minimum group threshold for k-anonymity equivalence classes")
+		sanitize := privCmd.Bool("sanitize", false, "Generate and save redacted/sanitized session trajectory")
+		strict := privCmd.Bool("strict", false, "Exit with non-zero exit code if privacy budget exhausted or k-anonymity failed")
+		_ = privCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr privacy -id <session_id> [-epsilon <float>] [-k <n>] [-sanitize] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		// Load available fleet traces to evaluate k-anonymity equivalence classes
+		var fleet []*trace.Session
+		traceIDs, _ := store.ListSessions()
+		for _, tid := range traceIDs {
+			if tid != *sessionID {
+				if s, err := store.LoadSession(tid); err == nil {
+					fleet = append(fleet, s)
+				}
+			}
+		}
+
+		cfg := privacy.DefaultDPConfig()
+		cfg.Epsilon = *epsilon
+		cfg.KAnonymityThreshold = *k
+		engine := privacy.NewPrivacyEngine(cfg)
+
+		report := engine.AuditSessionPrivacy(session, fleet, *k)
+		fmt.Print(privacy.RenderPrivacyScorecard(report))
+
+		if *sanitize {
+			sanitized, maskRep := engine.SanitizeSession(session)
+			if err := store.SaveSession(sanitized); err != nil {
+				log.Fatalf("Failed to save sanitized session: %v", err)
+			}
+			fmt.Printf("🔒 [AgentVCR] Sanitized session saved: %s (Redacted %d sensitive tokens)\n\n",
+				sanitized.ID, maskRep.TotalTokensMasked)
+		}
+
+		if *strict && !report.OverallCompliance {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1186,6 +1237,7 @@ func printHelp() {
 	fmt.Println("  speculate   Adaptive speculative execution rollback & predictive branch caching")
 	fmt.Println("  tenant      Multi-tenant cryptographic namespace isolation & RBAC policy audit")
 	fmt.Println("  gossip      Ephemeral P2P agent gossip consensus & distributed Byzantine quorum ledger")
+	fmt.Println("  privacy     Distributed differential privacy token masking & k-anonymity auditing")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1215,4 +1267,5 @@ func printHelp() {
 	fmt.Println("  agentvcr speculate -id trace_1 -min-conf 0.80 -strict")
 	fmt.Println("  agentvcr tenant -id trace_1 -tenant enterprise_corp -block-tool shell_exec -strict")
 	fmt.Println("  agentvcr gossip -id trace_1 -peers 5 -strict")
+	fmt.Println("  agentvcr privacy -id trace_1 -epsilon 1.0 -k 3 -sanitize -strict")
 }
