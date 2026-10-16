@@ -21,6 +21,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
 	"github.com/Noooblien/agentvcr/pkg/otel"
+	"github.com/Noooblien/agentvcr/pkg/policy"
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/sim"
@@ -748,6 +749,69 @@ func main() {
 			fmt.Printf("   Ready for execution replay via 'agentvcr play -id %s'\n", repairID)
 		}
 
+	case "policy":
+		policyCmd := flag.NewFlagSet("policy", flag.ExitOnError)
+		sessionID := policyCmd.String("id", "", "Trace Session ID to audit against zero-trust policy")
+		policyFile := policyCmd.String("rules", "", "Path to custom policy rules JSON file (optional)")
+		blockTool := policyCmd.String("block-tool", "", "Ad-hoc rule: regex pattern of forbidden tools")
+		forbidPattern := policyCmd.String("forbid", "", "Ad-hoc rule: forbidden regex pattern (e.g. 'rm -rf')")
+		blockHost := policyCmd.String("block-host", "", "Ad-hoc rule: blocked egress destination host (SSRF)")
+		maxToolCalls := policyCmd.Int("max-tool-calls", 0, "Max permitted invocations per individual tool")
+		redactPII := policyCmd.Bool("redact-pii", true, "Enable automated redaction of API keys and credentials")
+		strict := policyCmd.Bool("strict", false, "Exit with non-zero exit code if policy breach is detected")
+		_ = policyCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr policy -id <session_id> [-rules policy.json] [-block-tool <regex>] [-forbid <pattern>] [-block-host <host>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		var suite policy.PolicySuite
+		if *policyFile != "" {
+			data, err := os.ReadFile(*policyFile)
+			if err != nil {
+				log.Fatalf("Failed to read policy rules %s: %v", *policyFile, err)
+			}
+			if err := json.Unmarshal(data, &suite); err != nil {
+				log.Fatalf("Invalid policy suite JSON: %v", err)
+			}
+		} else {
+			suite = policy.PolicySuite{
+				SuiteName:     fmt.Sprintf("Zero-Trust Policy Suite for %s", *sessionID),
+				DefaultAction: policy.ActionAllow,
+			}
+			rule := policy.PolicyRule{
+				ID:                "adhoc-governance-rule",
+				Action:            policy.ActionDeny,
+				ToolPattern:       *blockTool,
+				MaxCallsPerTool:   *maxToolCalls,
+				RedactPIIPatterns: *redactPII,
+			}
+			if *forbidPattern != "" {
+				rule.ForbiddenRegex = []string{*forbidPattern}
+			}
+			if *blockHost != "" {
+				rule.BlockedHosts = []string{*blockHost}
+			}
+			suite.Rules = append(suite.Rules, rule)
+		}
+
+		enforcer := policy.NewEnforcer(suite)
+		report, err := enforcer.AuditSession(session)
+		if err != nil {
+			log.Fatalf("Policy audit failed: %v", err)
+		}
+
+		fmt.Print(policy.RenderPolicyScorecard(report))
+
+		if *strict && !report.ZeroTrustCompliance {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -774,6 +838,7 @@ func printHelp() {
 	fmt.Println("  consensus Multi-agent consensus & Byzantine fault detection replay harness")
 	fmt.Println("  forensics Semantic vector search & RAG hallucination replay forensics")
 	fmt.Println("  causal    Cross-trajectory causal DAG synthesizer & automated root-cause repair engine")
+	fmt.Println("  policy    Real-time runtime policy governance & zero-trust sandboxing enforcer")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -793,4 +858,5 @@ func printHelp() {
 	fmt.Println("  agentvcr consensus -sessions agent_1,agent_2,agent_3 -quorum 0.67")
 	fmt.Println("  agentvcr forensics -id trace_1 -threshold 0.35 -strict")
 	fmt.Println("  agentvcr causal -id trace_1 -repair")
+	fmt.Println("  agentvcr policy -id trace_1 -forbid 'rm -rf' -block-host 169.254.169.254 -strict")
 }
