@@ -111,7 +111,8 @@ client = OpenAI(
 - [x] Autonomous self-healing trajectory patch synthesizer & AST repair engine (`heal`)
 - [x] Confidential computing hardware enclave attestation & AMD SEV-SNP verification (`enclave`)
 - [x] Automated prompt-leakage side-channel analyzer & differential cache-timing forensics (`timing`)
-- [ ] Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox (`wasi`)
+- [x] Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox (`wasi`)
+- [ ] Autonomous synthetic multi-agent red-team prompt injection harness (`redteam`)
 
 ---
 

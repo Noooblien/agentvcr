@@ -46,6 +46,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/trace"
 	"github.com/Noooblien/agentvcr/pkg/tui"
 	"github.com/Noooblien/agentvcr/pkg/vision"
+	"github.com/Noooblien/agentvcr/pkg/wasi"
 	"github.com/Noooblien/agentvcr/pkg/zkp"
 )
 
@@ -1555,6 +1556,39 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "wasi":
+		wasiCmd := flag.NewFlagSet("wasi", flag.ExitOnError)
+		sessionID := wasiCmd.String("id", "", "Trace Session ID to isolate within WebAssembly WASI sandbox")
+		fuelLimit := wasiCmd.Uint64("fuel", 1_000_000, "Instruction fuel execution limit")
+		strict := wasiCmd.Bool("strict", false, "Exit with non-zero exit code if sandbox violations or traps occur")
+		_ = wasiCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr wasi -id <session_id> [-fuel <units>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		cfg := wasi.DefaultSandboxPolicy()
+		if *fuelLimit > 0 {
+			cfg.FuelBudget = *fuelLimit
+		}
+
+		runtime := wasi.NewSandboxRuntime(cfg)
+		report, err := runtime.IsolateTrajectorySession(session)
+		if err != nil {
+			log.Fatalf("WASI sandbox isolation failed: %v", err)
+		}
+
+		fmt.Print(wasi.RenderWASIScorecard(report))
+
+		if *strict && (!report.IsolationCompliant || !report.ZeroHostEscapeRisk) {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1598,6 +1632,7 @@ func printHelp() {
 	fmt.Println("  heal        Autonomous self-healing trajectory patch synthesizer & AST repair engine")
 	fmt.Println("  enclave     Confidential computing hardware enclave attestation & AMD SEV-SNP verification")
 	fmt.Println("  timing      Automated prompt-leakage side-channel analyzer & differential cache-timing forensics")
+	fmt.Println("  wasi        Ephemeral zero-dependency WebAssembly WASI agent isolation sandbox")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -1636,4 +1671,5 @@ func printHelp() {
 	fmt.Println("  agentvcr heal -id trace_1 -apply -strict")
 	fmt.Println("  agentvcr enclave -id trace_1 -strict")
 	fmt.Println("  agentvcr timing -id trace_1 -max-leak-bits 4.0 -pad -strict")
+	fmt.Println("  agentvcr wasi -id trace_1 -fuel 1000000 -strict")
 }
