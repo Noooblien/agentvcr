@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Agent-to-Agent (A2A) Protocol Transport, Card Discovery & Delegation Bus (`pkg/a2a`)**: Decentralized inter-agent wire protocol enabling secure agent card discovery, task delegation contracts, cryptographic Ed25519 payload signing, and flight-recorded message bus routing.
+- **Agent Card & Capability Directory (`pkg/a2a/identity.go`)**: Identity manager registering agent cards, roles, endpoints, and input/output capability schemas with Ed25519 keypair generation and cryptographic signature verification.
+- **Asynchronous Task Delegation Contracts (`pkg/a2a/router.go`)**: Thread-safe routing hub supporting `DELEGATE`, `RESULT`, `CANCEL`, `HEARTBEAT`, and `ACK` message envelopes with delivery SLAs, timeout handling, and hop limits.
+- **Flight-Recorded Inter-Agent Interceptor (`pkg/a2a/scorecard.go`)**: Wire-level tap capturing all inter-agent traffic into deterministic VCR traces with monotonic checksum chains.
+- **Interactive A2A CLI & Mermaid Sequence Diagram (`agentvcr a2a`)**: ANSI scorecard visualizing delivery SLAs, registered agent directories, and inter-agent message logs, paired with automated Mermaid sequence diagrams.
 - **Interactive Time-Travel Agent Debugger & DAP Hypervisor (`pkg/debugger`)**: Full-featured interactive debugger for multi-agent swarm trajectories supporting conditional breakpoints, state invariant watchpoints, time-travel step-back rewinding, and live hot-patch memory mutation.
 - **Conditional Breakpoint Engine**: Precision execution pauses triggered by step numbers (`BreakStep`), tool invocations (`BreakToolCall`), cumulative token limits (`BreakTokenThreshold`), errors (`BreakError`), regex payloads (`BreakRegex`), or complex boolean predicates (`BreakCondition`).
 - **State Invariant Watchpoints**: Monitors active working memory variables against boundary invariants (`==`, `!=`, `<`, `>`, `<=`, `>=`, `contains`, `not_empty`), automatically halting execution when agents violate state constraints.

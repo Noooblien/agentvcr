@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Noooblien/agentvcr/pkg/a2a"
 	"github.com/Noooblien/agentvcr/pkg/actor"
 	"github.com/Noooblien/agentvcr/pkg/attest"
 	"github.com/Noooblien/agentvcr/pkg/bench"
@@ -3495,6 +3496,184 @@ func main() {
 		_ = demo
 		return
 
+	case "a2a":
+		a2aCmd := flag.NewFlagSet("a2a", flag.ExitOnError)
+		demo := a2aCmd.Bool("demo", false, "Run Agent-to-Agent (A2A) protocol message bus demonstration")
+		mermaid := a2aCmd.Bool("mermaid", false, "Output Mermaid sequence diagram markup of inter-agent interactions")
+		strict := a2aCmd.Bool("strict", false, "Exit with non-zero exit code if A2A message routing or verification fails")
+		_ = a2aCmd.Parse(os.Args[2:])
+
+		im := a2a.NewIdentityManager()
+
+		// Register Orchestrator Agent
+		leadCard, err := im.GenerateIdentity(
+			"agent-lead-orchestrator",
+			"Lead Systems Orchestrator",
+			"Orchestrator",
+			"openbot://swarm/orchestrator",
+			[]a2a.Capability{
+				{Name: "task_decomposition", Description: "Breaks user requests into multi-agent subtasks"},
+				{Name: "consensus_aggregation", Description: "Aggregates multi-agent worker results"},
+			},
+		)
+		if err != nil {
+			log.Fatalf("Failed to generate lead identity: %v", err)
+		}
+
+		// Register Coder Specialist Agent
+		coderCard, err := im.GenerateIdentity(
+			"agent-coder-specialist",
+			"Go Systems Engineer",
+			"CodeSpecialist",
+			"openbot://swarm/coder",
+			[]a2a.Capability{
+				{Name: "code_generation", Description: "Generates production Go code with clean architecture"},
+				{Name: "unit_testing", Description: "Executes unit and integration test suites"},
+			},
+		)
+		if err != nil {
+			log.Fatalf("Failed to generate coder identity: %v", err)
+		}
+
+		// Register Security Auditor Agent
+		secCard, err := im.GenerateIdentity(
+			"agent-security-auditor",
+			"Zero-Trust Policy Auditor",
+			"SecurityAuditor",
+			"openbot://swarm/security",
+			[]a2a.Capability{
+				{Name: "taint_tracking", Description: "Tracks dynamic information flow and data sinks"},
+				{Name: "escape_prevention", Description: "Validates sandbox jailbreak guardrails"},
+			},
+		)
+		if err != nil {
+			log.Fatalf("Failed to generate sec identity: %v", err)
+		}
+
+		router := a2a.NewRouter(im)
+		interceptor := a2a.NewInterceptor(nil)
+
+		// Set up inboxes
+		leadInbox := router.RegisterInbox(leadCard.AgentID, 16)
+		coderInbox := router.RegisterInbox(coderCard.AgentID, 16)
+		secInbox := router.RegisterInbox(secCard.AgentID, 16)
+		_ = leadInbox
+
+		convID := fmt.Sprintf("conv-%d", time.Now().Unix())
+
+		// Handshake
+		hsEnv := a2a.MessageEnvelope{
+			ID:             "msg-hs-1",
+			ConversationID: convID,
+			Type:           a2a.TypeHandshake,
+			SenderID:       leadCard.AgentID,
+			RecipientID:    coderCard.AgentID,
+			Timestamp:      time.Now(),
+			Payload: map[string]interface{}{
+				"protocol_version": "1.0.0",
+				"greeting":         "Autonomous engineering engine bus connected",
+			},
+		}
+		_ = im.SignEnvelope(&hsEnv)
+		_ = router.Send(hsEnv)
+		interceptor.RecordEnvelope(hsEnv)
+		<-coderInbox
+
+		// Delegation Task 1: Code Implementation
+		taskEnv := a2a.MessageEnvelope{
+			ID:             "msg-task-1",
+			ConversationID: convID,
+			Type:           a2a.TypeDelegate,
+			SenderID:       leadCard.AgentID,
+			RecipientID:    coderCard.AgentID,
+			Timestamp:      time.Now(),
+			Payload: map[string]interface{}{
+				"goal":             "Implement A2A protocol wire serializer",
+				"capability":       "code_generation",
+				"requires_reply":   true,
+				"approved_actions": []string{"write_file", "run_test"},
+			},
+		}
+		_ = im.SignEnvelope(&taskEnv)
+		_ = router.Send(taskEnv)
+		interceptor.RecordEnvelope(taskEnv)
+		receivedTask := <-coderInbox
+
+		// Coder replies with Result
+		resEnv := a2a.MessageEnvelope{
+			ID:             "msg-res-1",
+			ConversationID: convID,
+			Type:           a2a.TypeResult,
+			SenderID:       coderCard.AgentID,
+			RecipientID:    leadCard.AgentID,
+			ReplyToID:      receivedTask.ID,
+			Timestamp:      time.Now(),
+			Payload: map[string]interface{}{
+				"status":      "done",
+				"result":      "pkg/a2a/router.go compiled and tested",
+				"evidence":    "tests/a2a_test.go passed 100%",
+				"duration_ms": 14,
+			},
+		}
+		_ = im.SignEnvelope(&resEnv)
+		_ = router.Send(resEnv)
+		interceptor.RecordEnvelope(resEnv)
+
+		// Delegation Task 2: Security Audit
+		auditTaskEnv := a2a.MessageEnvelope{
+			ID:             "msg-task-2",
+			ConversationID: convID,
+			Type:           a2a.TypeDelegate,
+			SenderID:       leadCard.AgentID,
+			RecipientID:    secCard.AgentID,
+			Timestamp:      time.Now(),
+			Payload: map[string]interface{}{
+				"goal":             "Audit cryptographic Ed25519 signatures and hop limits",
+				"capability":       "escape_prevention",
+				"requires_reply":   true,
+				"approved_actions": []string{"inspect_signature"},
+			},
+		}
+		_ = im.SignEnvelope(&auditTaskEnv)
+		_ = router.Send(auditTaskEnv)
+		interceptor.RecordEnvelope(auditTaskEnv)
+		receivedAuditTask := <-secInbox
+
+		// Security replies
+		secResEnv := a2a.MessageEnvelope{
+			ID:             "msg-res-2",
+			ConversationID: convID,
+			Type:           a2a.TypeResult,
+			SenderID:       secCard.AgentID,
+			RecipientID:    leadCard.AgentID,
+			ReplyToID:      receivedAuditTask.ID,
+			Timestamp:      time.Now(),
+			Payload: map[string]interface{}{
+				"status":      "done",
+				"result":      "No signature tampering or unbounded routing loops detected",
+				"evidence":    "Audit passed with 100% SLA compliance",
+				"duration_ms": 8,
+			},
+		}
+		_ = im.SignEnvelope(&secResEnv)
+		_ = router.Send(secResEnv)
+		interceptor.RecordEnvelope(secResEnv)
+
+		report := router.Audit()
+
+		if *mermaid {
+			fmt.Println(a2a.RenderA2AMermaid(report))
+			return
+		}
+
+		fmt.Print(a2a.RenderA2AScorecard(report))
+
+		if *strict && (report.SLAPercent < 99.0 || report.TotalMessages < 5) {
+			log.Fatalf("A2A protocol routing SLA validation failed")
+		}
+		_ = demo
+		return
+
 	default:
 		printHelp()
 	}
@@ -3561,6 +3740,7 @@ func printHelp() {
 	fmt.Println("  finops      Token budget circuit breaker, runaway spend protector & rate cards")
 	fmt.Println("  checkpoint  Session checkpoint hibernation, delta compression & hot restoration")
 	fmt.Println("  debug       Time-travel agent debugger, conditional breakpoints & DAP hypervisor")
+	fmt.Println("  a2a         Agent-to-Agent (A2A) protocol transport, card discovery & delegation")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -3621,4 +3801,5 @@ func printHelp() {
 	fmt.Println("  agentvcr finops --demo -strict")
 	fmt.Println("  agentvcr checkpoint --demo -strict")
 	fmt.Println("  agentvcr debug --demo -strict")
+	fmt.Println("  agentvcr a2a --demo -strict")
 }
