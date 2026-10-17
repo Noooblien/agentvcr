@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Model Gateway, Circuit Breaker & Semantic Multi-Provider Router (`pkg/gateway`)**: Production-grade LLM routing gateway featuring sliding-window circuit breakers, multi-protocol normalization (OpenAI, Anthropic, Gemini, Ollama), and automatic failover cascades.
+- **Sliding-Window Circuit Breakers & Self-Healing Probes**: Thread-safe per-provider circuit breakers with configurable failure thresholds, rolling error rates, cooldown durations, and half-open canary probes for graceful degradation under rate limits (HTTP 429) or upstream outages.
+- **Semantic Task Complexity Classifier & Tiered Routing**: Automatic intent analysis estimating token length, tool calling requirements, and mathematical/reasoning keywords to route queries to optimal model tiers (`TierFast`, `TierStandard`, `TierReasoning`).
+- **Deterministic Semantic Replay Cache**: SHA-256 fingerprinting of normalized prompt messages, tools, and temperature, enabling sub-millisecond 0ms instant cache hits with zero dollar cost on repeat agent turns.
+- **Multi-Protocol Translation Layer**: Dynamic bidirectional translation across OpenAI Chat Completion format, Anthropic Messages API, and Google Gemini format without modifying agent SDK code.
+- **Interactive Gateway CLI & Topology Exporter (`agentvcr gateway`)**: Rich ANSI terminal scorecard tracking real-time provider traffic, circuit states, failover counts, and cost savings, paired with automatic Mermaid routing diagram export.
 - **Distributed Agent Actor Mesh & Supervision Tree Runtime (`pkg/actor`)**: Erlang/OTP-inspired fault-tolerant actor runtime providing concurrent mailboxes, priority message queuing, supervisor trees (`OneForOne`, `OneForAll`, `RestForOne`), and autonomous crash recovery for multi-agent swarms.
 - **Hierarchical Supervision Strategies & Restart Windows**: Automatic panic and runtime error containment with configurable backoff policies (`MaxRestarts` within `TimeWindow`) and graceful failure escalation.
 - **Dead-Letter Office & Priority Mailbox Queuing**: Thread-safe mailbox with priority queues (`PrioritySystem`, `PriorityHigh`, `PriorityNormal`, `PriorityLow`), bounded overflow handling (`DropOldest`, `DropNewest`, `DeadLetter`), and unroutable message journals.
