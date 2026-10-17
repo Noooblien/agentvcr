@@ -42,6 +42,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/raft"
 	"github.com/Noooblien/agentvcr/pkg/redteam"
 	"github.com/Noooblien/agentvcr/pkg/replay"
+	"github.com/Noooblien/agentvcr/pkg/research"
 	"github.com/Noooblien/agentvcr/pkg/sim"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
 	"github.com/Noooblien/agentvcr/pkg/speculate"
@@ -2042,6 +2043,78 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "research":
+		researchCmd := flag.NewFlagSet("research", flag.ExitOnError)
+		query := researchCmd.String("query", "", "Research goal or investigation hypothesis")
+		sessionID := researchCmd.String("session", "", "Optional session ID to load trace as input corpus")
+		depth := researchCmd.Int("depth", 3, "Maximum research tree exploration depth")
+		threshold := researchCmd.Float64("threshold", 0.55, "Minimum grounding score threshold")
+		mermaid := researchCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of research tree")
+		exportPath := researchCmd.String("export", "", "Export markdown executive research brief to file")
+		strict := researchCmd.Bool("strict", false, "Exit with non-zero exit code if ungrounded claims or contradictions detected")
+		_ = researchCmd.Parse(os.Args[2:])
+
+		if *query == "" {
+			log.Fatal("Usage: agentvcr research -query <goal> [-session <session_id>] [-depth <int>] [-threshold <float>] [-mermaid] [-export <path>] [-strict]")
+		}
+
+		var corpus []research.Document
+
+		if *sessionID != "" {
+			session, err := store.LoadSession(*sessionID)
+			if err != nil {
+				log.Fatalf("Error loading session %s: %v", *sessionID, err)
+			}
+			for _, ev := range session.Events {
+				payloadBytes, _ := json.MarshalIndent(ev.Payload, "", "  ")
+				corpus = append(corpus, research.Document{
+					URI:        fmt.Sprintf("trace://%s/step_%d", session.ID, ev.Index),
+					Content:    fmt.Sprintf("Step #%d (%s): %s", ev.Index, ev.Type, string(payloadBytes)),
+					SourceType: research.SourceTraceSession,
+				})
+			}
+		}
+
+		if len(corpus) == 0 {
+			coreFiles := []string{"README.md", "CHANGELOG.md", "ARCHITECTURE.md", "AGENT.md"}
+			for _, fn := range coreFiles {
+				if data, err := os.ReadFile(fn); err == nil {
+					corpus = append(corpus, research.Document{
+						URI:        fmt.Sprintf("file:///%s", fn),
+						Content:    string(data),
+						SourceType: research.SourceDocs,
+					})
+				}
+			}
+		}
+
+		cfg := research.DefaultResearchConfig()
+		cfg.MaxDepth = *depth
+		cfg.GroundingThreshold = *threshold
+		cfg.StrictPruning = *strict
+
+		engine := research.NewEngine(cfg)
+		report, err := engine.ExecuteResearch(*query, corpus)
+		if err != nil {
+			log.Fatalf("Research execution failed: %v", err)
+		}
+
+		if *mermaid {
+			fmt.Println(research.ExportMermaidResearchTree(report.Tree))
+			return
+		}
+
+		if *exportPath != "" {
+			_ = os.WriteFile(*exportPath, []byte(report.ExecutiveSummary), 0644)
+			fmt.Printf("Executive research brief exported to: %s\n", *exportPath)
+		}
+
+		fmt.Print(research.RenderResearchScorecard(report))
+
+		if *strict && !report.PassedAudit {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -2095,6 +2168,7 @@ func printHelp() {
 	fmt.Println("  mcp         Model Context Protocol stdio/SSE interceptor, validator & virtual replay")
 	fmt.Println("  compact     Context window compactor, token waste profiler & KV-cache optimizer")
 	fmt.Println("  bench-perf  Sub-millisecond latency profiling, micro-benchmarks & concurrency stress")
+	fmt.Println("  research    Autonomous recursive multi-agent research engine & citation tree")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -2141,4 +2215,5 @@ func printHelp() {
 	fmt.Println("  agentvcr mcp -action demo")
 	fmt.Println("  agentvcr compact -id trace_1 -strategy lossless -strict")
 	fmt.Println("  agentvcr bench-perf -target all -iterations 200 -max-p99-us 2000 -strict")
+	fmt.Println("  agentvcr research -query 'concurrency bottlenecks' -depth 3 -strict")
 }

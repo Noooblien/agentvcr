@@ -124,6 +124,7 @@ client = OpenAI(
 - [x] Continuous coverage-guided native Go fuzzing suite (`tests/fuzz_target_test.go`)
 - [x] Real-time pub/sub telemetry event hub, live SSE broadcast & web flight control (`serve`)
 - [x] Speculative multi-token AST predictor & Cursor-style Fast-Tab editor engine (`speculate`)
+- [x] Recursive multi-agent research tree, SHA-256 citation grounding & hallucination pruner (`research`)
 
 ---
 
