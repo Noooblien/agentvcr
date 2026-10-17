@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Speculative Multi-Token AST Predictor & Fast-Tab Engine (`pkg/speculate`)**: Reverse-engineered Cursor-style sub-50ms multi-line code edit predictor using syntactic signature matching, dynamic pattern registration, and typing speed time-savings estimator.
+- **Fast-Tab Interactive CLI Demonstration (`agentvcr speculate -fast-tab`)**: Instant terminal preview of speculative multi-line syntax drafts with line-level diff highlighting and confidence metrics.
 - **Real-Time Telemetry Event Hub & Streaming Flight Controller (`pkg/dashboard`)**: In-memory Pub/Sub fan-out telemetry bus with channel-based subscriber multiplexing and SSE live broadcast streaming (`/api/stream/events`).
 - **Interactive REST Fork & Time-Travel Controller (`/api/fork`)**: HTTP-controlled step-level trajectory branching API enabling external web UI consoles to duplicate, mutate, and branch running agents on the fly.
 - **Flight Control Web Console & Modern UI Overhaul**: Zero-dependency dark-mode web console with real-time SSE event feed, fleet token/cost metrics, and trace inspection links.

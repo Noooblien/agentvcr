@@ -1056,11 +1056,32 @@ func main() {
 		sessionID := specCmd.String("id", "", "Trace Session ID to evaluate speculative execution branches for")
 		minConf := specCmd.Float64("min-conf", 0.75, "Minimum confidence threshold for speculative branch commitment")
 		maxDepth := specCmd.Int("max-depth", 3, "Maximum forward speculative execution step depth")
+		fastTab := specCmd.Bool("fast-tab", false, "Demonstrate Cursor-style multi-token Fast-Tab code edit prediction")
 		strict := specCmd.Bool("strict", false, "Exit with non-zero exit code if mispredictions occur")
 		_ = specCmd.Parse(os.Args[2:])
 
+		if *fastTab {
+			predictor := speculate.NewASTPredictor(speculate.DefaultPredictorConfig())
+			ctx := speculate.ASTContext{
+				Language:        "go",
+				CurrentFunction: "ServeHTTP",
+				LeadingLines: []string{
+					"func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {",
+					"\tbodyBytes, err := io.ReadAll(r.Body)",
+				},
+				IndentLevel: 1,
+			}
+			pos := speculate.CursorPosition{FilePath: "pkg/proxy/server.go", Line: 42, Column: 1}
+			draft, err := predictor.GenerateDraft(ctx, pos)
+			if err != nil {
+				log.Fatalf("Fast-Tab prediction failed: %v", err)
+			}
+			fmt.Print(speculate.RenderDraftCard(draft))
+			return
+		}
+
 		if *sessionID == "" {
-			log.Fatal("Usage: agentvcr speculate -id <session_id> [-min-conf <float>] [-max-depth <n>] [-strict]")
+			log.Fatal("Usage: agentvcr speculate -id <session_id> [-min-conf <float>] [-max-depth <n>] [-fast-tab] [-strict]")
 		}
 
 		session, err := store.LoadSession(*sessionID)
