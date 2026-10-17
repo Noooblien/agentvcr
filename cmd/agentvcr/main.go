@@ -18,6 +18,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/canary"
 	"github.com/Noooblien/agentvcr/pkg/causal"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
+	"github.com/Noooblien/agentvcr/pkg/compact"
 	"github.com/Noooblien/agentvcr/pkg/consensus"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/diff"
@@ -1934,6 +1935,45 @@ func main() {
 			log.Fatalf("Unknown mcp action '%s'. Use 'demo' or 'audit'.", *action)
 		}
 
+	case "compact":
+		compactCmd := flag.NewFlagSet("compact", flag.ExitOnError)
+		sessionID := compactCmd.String("id", "", "Trace Session ID to profile and compact")
+		strategyStr := compactCmd.String("strategy", "lossless", "Compaction strategy: 'lossless', 'aggressive', or 'kv-cache'")
+		outSessionID := compactCmd.String("out", "", "Optional ID for the newly created compacted session")
+		minSavings := compactCmd.Float64("min-savings", 10.0, "Minimum required token savings percentage threshold")
+		strict := compactCmd.Bool("strict", false, "Exit with non-zero exit code if savings threshold is not met")
+		_ = compactCmd.Parse(os.Args[2:])
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr compact -id <session_id> [-strategy lossless|aggressive|kv-cache] [-out <new_id>] [-min-savings <pct>] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		cfg := compact.DefaultCompactorConfig()
+		cfg.Strategy = compact.CompactorStrategy(*strategyStr)
+		cfg.MinSavingsThresholdPct = *minSavings
+
+		compactor := compact.NewCompactor(cfg)
+		compactedSession, report, err := compactor.CompactSession(session, *outSessionID)
+		if err != nil {
+			log.Fatalf("Compaction failed: %v", err)
+		}
+
+		if err := store.SaveSession(compactedSession); err != nil {
+			log.Fatalf("Failed to save compacted session: %v", err)
+		}
+
+		fmt.Print(compact.RenderCompactorScorecard(report))
+		fmt.Printf("📦 Compacted trace stored deterministically as: .vcr_traces/%s.vcr.json\n\n", compactedSession.ID)
+
+		if *strict && !report.MeetsThreshold {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -1985,6 +2025,7 @@ func printHelp() {
 	fmt.Println("  taint       Dynamic Information Flow Control (IFC) taint tracker & Non-Interference auditor")
 	fmt.Println("  drift       Autonomous cross-agent behavioral drift & entropy-guided policy synthesis")
 	fmt.Println("  mcp         Model Context Protocol stdio/SSE interceptor, validator & virtual replay")
+	fmt.Println("  compact     Context window compactor, token waste profiler & KV-cache optimizer")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -2029,4 +2070,5 @@ func printHelp() {
 	fmt.Println("  agentvcr byzantine -nodes 4 -rounds 3 -strict")
 	fmt.Println("  agentvcr stego -id trace_1 -entropy 4.85 -strict")
 	fmt.Println("  agentvcr mcp -action demo")
+	fmt.Println("  agentvcr compact -id trace_1 -strategy lossless -strict")
 }
