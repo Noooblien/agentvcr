@@ -141,6 +141,7 @@ client = OpenAI(
 - [x] Session checkpoint hibernation, incremental delta compression & hot restoration (`checkpoint`)
 - [x] Interactive time-travel agent debugger, conditional breakpoints, invariant watchpoints & DAP (`debug`)
 - [x] Agent-to-Agent (A2A) protocol transport, card discovery & delegation bus (`a2a`)
+- [x] Model Context Protocol (MCP) schema fuzzing & mutation testing harness (`mcp -action fuzz`)
 
 ---
 

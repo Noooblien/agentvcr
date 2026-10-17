@@ -1932,9 +1932,10 @@ func main() {
 
 	case "mcp":
 		mcpCmd := flag.NewFlagSet("mcp", flag.ExitOnError)
-		action := mcpCmd.String("action", "demo", "MCP action: 'demo', 'audit', or 'mock'")
+		action := mcpCmd.String("action", "demo", "MCP action: 'demo', 'audit', 'mock', or 'fuzz'")
 		sessionID := mcpCmd.String("id", "", "Trace Session ID to audit or seed mock from")
-		strict := mcpCmd.Bool("strict", false, "Exit with non-zero exit code if MCP security violations are detected")
+		strict := mcpCmd.Bool("strict", false, "Exit with non-zero exit code if MCP security violations or low fuzz resilience detected")
+		mermaid := mcpCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of MCP fuzzing matrix")
 		_ = mcpCmd.Parse(os.Args[2:])
 
 		switch *action {
@@ -2013,8 +2014,74 @@ func main() {
 				os.Exit(1)
 			}
 
+		case "fuzz":
+			fuzzer := mcp.NewSchemaFuzzer(42)
+			sampleTool := mcp.Tool{
+				Name:        "file_system_exec",
+				Description: "Execute command or read filesystem path",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"command", "path"},
+					Properties: map[string]interface{}{
+						"command": map[string]interface{}{"type": "string"},
+						"path":    map[string]interface{}{"type": "string"},
+						"timeout": map[string]interface{}{"type": "integer"},
+						"dry_run": map[string]interface{}{"type": "boolean"},
+					},
+				},
+			}
+
+			virtualServer := mcp.NewVirtualMCPServer("AgentVCR-FuzzTarget", "1.0.0")
+			virtualServer.RegisterTool(sampleTool)
+
+			mutations := fuzzer.GenerateMutations(sampleTool)
+			results := make([]mcp.FuzzTrialResult, 0, len(mutations))
+			blockedCnt := 0
+			handledCnt := 0
+			panicCnt := 0
+
+			for _, mut := range mutations {
+				trial := fuzzer.ExecuteTrial(sampleTool, mut, virtualServer)
+				results = append(results, trial)
+				if trial.BlockedByVal {
+					blockedCnt++
+				} else if trial.ServerHandled {
+					handledCnt++
+				}
+				if trial.ServerPanic {
+					panicCnt++
+				}
+			}
+
+			resilience := 100.0
+			if len(mutations) > 0 {
+				resilience = (float64(blockedCnt+handledCnt) / float64(len(mutations))) * 100.0
+			}
+
+			fuzzReport := mcp.FuzzReport{
+				ToolName:        sampleTool.Name,
+				TotalMutations:  len(mutations),
+				BlockedCount:    blockedCnt,
+				HandledCount:    handledCnt,
+				PanicCount:      panicCnt,
+				ResilienceScore: resilience,
+				Results:         results,
+			}
+
+			if *mermaid {
+				fmt.Println(mcp.RenderFuzzMermaid(fuzzReport))
+				return
+			}
+
+			fmt.Print(mcp.RenderFuzzScorecard(fuzzReport))
+
+			if *strict && (resilience < 95.0 || panicCnt > 0) {
+				log.Fatalf("MCP schema fuzz resilience failed: score=%.1f%%, panics=%d", resilience, panicCnt)
+			}
+			return
+
 		default:
-			log.Fatalf("Unknown mcp action '%s'. Use 'demo' or 'audit'.", *action)
+			log.Fatalf("Unknown mcp action '%s'. Use 'demo', 'audit', or 'fuzz'.", *action)
 		}
 
 	case "compact":
@@ -3786,6 +3853,7 @@ func printHelp() {
 	fmt.Println("  agentvcr byzantine -nodes 4 -rounds 3 -strict")
 	fmt.Println("  agentvcr stego -id trace_1 -entropy 4.85 -strict")
 	fmt.Println("  agentvcr mcp -action demo")
+	fmt.Println("  agentvcr mcp -action fuzz -strict")
 	fmt.Println("  agentvcr compact -id trace_1 -strategy lossless -strict")
 	fmt.Println("  agentvcr bench-perf -target all -iterations 200 -max-p99-us 2000 -strict")
 	fmt.Println("  agentvcr research -query 'concurrency bottlenecks' -depth 3 -strict")
