@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **StateGraph Workflow Engine & Checkpoint Time-Travel Debugger (`pkg/graph`)**: Native LangGraph/StateGraph cyclic multi-agent graph runtime featuring typed state channels, custom state reducers (`ReducerAppendList`, `ReducerMergeMap`, `ReducerOverwrite`), conditional edge routers, and cycle loop detection.
+- **Microsecond Checkpoint Journal & State Rewind**: Immutable step-by-step checkpoint snapshots allowing backward time-travel, thread state branching, and retroactive state injection resumes.
+- **Human-in-the-Loop Interrupt Gates (`InterruptBefore`, `InterruptAfter`)**: Configurable pause gates halting execution before or after sensitive nodes (e.g. production deployers) for human approval or parameter mutation.
+- **Recursion Limit Guards & Cycle Detection**: Configurable recursion depth limiter preventing infinite agent loops with cycle counters.
+- **Mermaid Flowchart Generator & Terminal Scorecard (`agentvcr graph`)**: Interactive ANSI terminal scorecard paired with dynamic Mermaid flowchart DAG visualization highlighting executed path transitions.
 - **Chrome DevTools Protocol (CDP) Flight Recorder & Virtual DOM Journal (`pkg/cdp`)**: Bidirectional JSON-RPC 2.0 WebSocket frame interceptor capturing page navigation, network waterfalls, DOM mutations, console logs, runtime exceptions, and agent click/type interactions.
 - **W3C HAR 1.2 Export & Network Waterfall Analytics**: Spec-compliant HTTP Archive (HAR 1.2) export with detailed connection timings (DNS, Connect, SSL, TTFB, Download), transfer sizes, and P50/P95 latency percentiles.
 - **In-Memory Virtual DOM Reconstruction & Fast QuerySelector**: Real-time virtual DOM tree synchronization tracking node insertions, attribute modifications, removals, and CSS selector matching (`#id`, `.class`, `tag`).

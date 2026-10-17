@@ -30,6 +30,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
 	"github.com/Noooblien/agentvcr/pkg/gossip"
+	"github.com/Noooblien/agentvcr/pkg/graph"
 	"github.com/Noooblien/agentvcr/pkg/heal"
 	"github.com/Noooblien/agentvcr/pkg/leaderboard"
 	"github.com/Noooblien/agentvcr/pkg/lineage"
@@ -2510,6 +2511,126 @@ func main() {
 			return
 		}
 
+	case "graph":
+		graphCmd := flag.NewFlagSet("graph", flag.ExitOnError)
+		demo := graphCmd.Bool("demo", false, "Run multi-agent StateGraph Code-Review-Deploy demonstration")
+		threadID := graphCmd.String("thread", "", "Graph execution thread ID")
+		mermaid := graphCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup")
+		maxRecursion := graphCmd.Int("max-recursion", 25, "Maximum graph recursion loop limit")
+		interrupt := graphCmd.String("interrupt-before", "", "Comma-separated node names to pause execution before")
+		strict := graphCmd.Bool("strict", false, "Exit with non-zero exit code if graph execution encounters faults or infinite loops")
+		_ = graphCmd.Parse(os.Args[2:])
+
+		tid := *threadID
+		if tid == "" {
+			tid = fmt.Sprintf("thread_stategraph_%d", time.Now().Unix())
+		}
+
+		builder := graph.NewStateGraph()
+		builder.AddChannel("goal", "Implement idempotent payment webhooks", graph.ReducerOverwrite)
+		builder.AddChannel("codeQuality", 35, graph.ReducerOverwrite)
+		builder.AddChannel("iteration", 0, graph.ReducerOverwrite)
+		builder.AddChannel("eventLog", []interface{}{}, graph.ReducerAppendList)
+		builder.AddChannel("metadata", map[string]interface{}{}, graph.ReducerMergeMap)
+
+		// 1. Architect Node
+		builder.AddNode("architect", func(ctx *graph.GraphContext, state map[string]interface{}) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"eventLog": []interface{}{"architect: drafted RFC for webhook idempotency with Redis lock & DB transaction"},
+				"metadata": map[string]interface{}{"architecture_approved": true},
+			}, nil
+		})
+
+		// 2. Coder Node
+		builder.AddNode("coder", func(ctx *graph.GraphContext, state map[string]interface{}) (map[string]interface{}, error) {
+			iter := 1
+			if val, ok := state["iteration"].(int); ok {
+				iter = val + 1
+			}
+			quality := 50
+			if val, ok := state["codeQuality"].(int); ok {
+				quality = val + 30
+			}
+			return map[string]interface{}{
+				"iteration":   iter,
+				"codeQuality": quality,
+				"eventLog":    []interface{}{fmt.Sprintf("coder: synthesized Go payment handler (iteration #%d, quality %d%%)", iter, quality)},
+			}, nil
+		})
+
+		// 3. Reviewer Node
+		builder.AddNode("reviewer", func(ctx *graph.GraphContext, state map[string]interface{}) (map[string]interface{}, error) {
+			quality, _ := state["codeQuality"].(int)
+			status := "needs_refinement"
+			if quality >= 85 {
+				status = "approved"
+			}
+			return map[string]interface{}{
+				"eventLog": []interface{}{fmt.Sprintf("reviewer: static analysis & race detector status=%s (quality=%d%%)", status, quality)},
+			}, nil
+		})
+
+		// 4. Deployer Node
+		builder.AddNode("deployer", func(ctx *graph.GraphContext, state map[string]interface{}) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"eventLog": []interface{}{"deployer: canary deployed to cluster-prod-east (traffic: 100%)"},
+				"metadata": map[string]interface{}{"deploy_status": "healthy"},
+			}, nil
+		})
+
+		builder.SetEntryPoint("architect")
+		builder.AddEdge("architect", "coder")
+		builder.AddEdge("coder", "reviewer")
+
+		// Dynamic routing: if codeQuality >= 85 -> "deploy", else "refine"
+		builder.AddConditionalEdge("reviewer", func(ctx *graph.GraphContext, state map[string]interface{}) (string, error) {
+			quality, _ := state["codeQuality"].(int)
+			if quality >= 85 {
+				return "deploy", nil
+			}
+			return "refine", nil
+		}, map[string]string{
+			"deploy": "deployer",
+			"refine": "coder",
+		})
+
+		builder.SetFinishPoint("deployer")
+
+		cfg := graph.DefaultGraphConfig()
+		cfg.MaxRecursionLimit = *maxRecursion
+		if *interrupt != "" {
+			parts := strings.Split(*interrupt, ",")
+			for _, p := range parts {
+				trimmed := strings.TrimSpace(p)
+				if trimmed != "" {
+					cfg.InterruptBefore = append(cfg.InterruptBefore, trimmed)
+				}
+			}
+		}
+
+		cg, err := builder.Compile(cfg)
+		if err != nil {
+			log.Fatalf("Failed to compile StateGraph: %v", err)
+		}
+
+		trace, err := cg.Invoke(tid, nil)
+		if err != nil && trace == nil {
+			log.Fatalf("Graph invocation failed: %v", err)
+		}
+
+		if *mermaid {
+			fmt.Println(cg.ExportMermaid(trace))
+			return
+		}
+
+		fmt.Print(graph.RenderGraphScorecard(trace))
+
+		if *strict && trace.Status != graph.StatusCompleted {
+			os.Exit(1)
+		}
+		return
+		_ = demo
+
 	default:
 		printHelp()
 	}
@@ -2567,6 +2688,7 @@ func printHelp() {
 	fmt.Println("  lsp         Language Server Protocol (LSP 3.17) daemon & Fast-Tab editor engine")
 	fmt.Println("  voice       Real-Time Voice API flight recorder & acoustic waveform synchronizer")
 	fmt.Println("  cdp         Chrome DevTools Protocol (CDP) flight recorder & DOM mutation journal")
+	fmt.Println("  graph       StateGraph cyclic multi-agent workflow engine & time-travel debugger")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -2619,4 +2741,5 @@ func printHelp() {
 	fmt.Println("  agentvcr lsp --stdio")
 	fmt.Println("  agentvcr voice --demo -strict")
 	fmt.Println("  agentvcr cdp --demo -strict")
+	fmt.Println("  agentvcr graph --demo -strict")
 }
