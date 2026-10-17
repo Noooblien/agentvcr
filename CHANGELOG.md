@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Context Window Compactor & Token Waste Profiler (`pkg/compact`)**: Lossless deduplication of redundant tool outputs via content hashing, automatic collapsing of intermediate retry chains, and stale read pruning.
+- **Upstream KV-Cache Prefix Optimizer**: Reorganizes dynamic/volatile prompt components to guarantee high cache hit ratios on Anthropic prompt caching and OpenAI prefix caching.
 - **Bidirectional Model Context Protocol (MCP) Interceptor (`pkg/mcp`)**: Real-time stdio/SSE JSON-RPC 2.0 frame capture, canonical SHA-256 argument hashing, and monotonic latency telemetry.
 - **Deterministic Virtual MCP Server & Replayer**: Zero-side-effect mock tool replay matching recorded argument digests, supporting configurable simulated latency and synthetic fault injection.
 - **MCP Argument Schema & Prompt Injection Guard (`pkg/mcp/validator.go`)**: Pre-execution argument type checking and OWASP-LLM prompt injection defense with formatted terminal scorecards.
