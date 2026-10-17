@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Distributed Agent Actor Mesh & Supervision Tree Runtime (`pkg/actor`)**: Erlang/OTP-inspired fault-tolerant actor runtime providing concurrent mailboxes, priority message queuing, supervisor trees (`OneForOne`, `OneForAll`, `RestForOne`), and autonomous crash recovery for multi-agent swarms.
+- **Hierarchical Supervision Strategies & Restart Windows**: Automatic panic and runtime error containment with configurable backoff policies (`MaxRestarts` within `TimeWindow`) and graceful failure escalation.
+- **Dead-Letter Office & Priority Mailbox Queuing**: Thread-safe mailbox with priority queues (`PrioritySystem`, `PriorityHigh`, `PriorityNormal`, `PriorityLow`), bounded overflow handling (`DropOldest`, `DropNewest`, `DeadLetter`), and unroutable message journals.
+- **Mermaid Supervision Tree & Interactive Scorecard (`agentvcr actor`)**: Rich ANSI terminal scorecard with live processor telemetry, average latency percentiles, and automatic Mermaid flowchart export of active actor hierarchies.
 - **Deterministic Container Sandbox Execution Hypervisor & CoW Overlay Rollback (`pkg/sandbox`)**: Isolated execution container hypervisor managing cgroup quotas (CPU time limit, RSS memory ceiling, max PIDs, max disk writes), network egress policies (AllowList/DenyList), and command flight recording for autonomous coding agents.
 - **Copy-on-Write (CoW) Overlay Filesystem**: Multi-layered in-memory ephemeral filesystem supporting baseline read-only images, upper write deltas, file whiteouts/tombstones, and microsecond $O(1)$ checkpoint rollback without disk churn.
 - **Autonomous Jailbreak & Escape Guardrails**: Real-time pre-execution pattern detection intercepting Cloud Metadata SSRF (`169.254.169.254`), privileged kernel escapes (`/proc/kcore`, `/sys/kernel`, `nsenter`), credential theft (`.ssh/id_rsa`, `/etc/shadow`), fork-bombs, and destructive wipes (`rm -rf /`).

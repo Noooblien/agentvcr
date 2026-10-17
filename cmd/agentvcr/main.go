@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Noooblien/agentvcr/pkg/actor"
 	"github.com/Noooblien/agentvcr/pkg/attest"
 	"github.com/Noooblien/agentvcr/pkg/bench"
 	"github.com/Noooblien/agentvcr/pkg/byzantine"
@@ -2776,6 +2777,99 @@ func main() {
 		_ = demo
 		return
 
+	case "actor":
+		actorCmd := flag.NewFlagSet("actor", flag.ExitOnError)
+		demo := actorCmd.Bool("demo", false, "Run distributed actor mesh and supervision tree demonstration")
+		strategyStr := actorCmd.String("strategy", "one-for-one", "Supervision strategy: 'one-for-one', 'one-for-all', or 'rest-for-one'")
+		mermaid := actorCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of supervision tree")
+		strict := actorCmd.Bool("strict", false, "Exit with non-zero exit code if actor crashes escalate or unhandled dead letters occur")
+		_ = actorCmd.Parse(os.Args[2:])
+
+		sys := actor.NewActorSystem("agentvcr-swarm-cluster")
+
+		var strategy actor.SupervisionStrategy
+		switch strings.ToLower(*strategyStr) {
+		case "one-for-all":
+			strategy = actor.StrategyOneForAll
+		case "rest-for-one":
+			strategy = actor.StrategyRestForOne
+		default:
+			strategy = actor.StrategyOneForOne
+		}
+
+		sup := sys.SpawnSupervisor("root-orchestrator", strategy, actor.DefaultRestartPolicy())
+
+		// Worker 1: Planner Agent
+		_, _ = sys.SpawnActor("planner", "task_decomposer", func(ctx *actor.ActorContext, msg actor.Message) error {
+			return ctx.Tell("coder", map[string]interface{}{
+				"plan": []string{"Implement OAuth2 PKCE", "Verify JWT Claims", "Generate audit trail"},
+			})
+		}, actor.DefaultMailboxConfig(), sup)
+
+		// Worker 2: Coder Agent (Flaky with controlled crash on command)
+		_, _ = sys.SpawnActor("coder", "code_synthesizer", func(ctx *actor.ActorContext, msg actor.Message) error {
+			if _, crash := msg.Payload["crash"]; crash {
+				panic("simulated fatal OOM or nil-pointer dereference in AST parser")
+			}
+			return ctx.Tell("reviewer", map[string]interface{}{
+				"status": "ready_for_review",
+				"files":  []string{"auth.go", "token.go"},
+			})
+		}, actor.DefaultMailboxConfig(), sup)
+
+		// Worker 3: Reviewer Agent
+		_, _ = sys.SpawnActor("reviewer", "security_auditor", func(ctx *actor.ActorContext, msg actor.Message) error {
+			return nil
+		}, actor.DefaultMailboxConfig(), sup)
+
+		// 1. Kick off multi-agent workflow
+		_ = sys.Send(actor.Message{
+			ID:        "wf-init",
+			Sender:    "system",
+			Recipient: "planner",
+			Priority:  actor.PriorityHigh,
+			Payload:   map[string]interface{}{"goal": "Build OAuth2 Security Layer"},
+		})
+
+		time.Sleep(20 * time.Millisecond)
+
+		// 2. Inject deliberate panic into Coder agent to test autonomous supervisor recovery
+		_ = sys.Send(actor.Message{
+			ID:        "fault-injection",
+			Sender:    "chaos-monkey",
+			Recipient: "coder",
+			Priority:  actor.PriorityHigh,
+			Payload:   map[string]interface{}{"crash": true},
+		})
+
+		time.Sleep(30 * time.Millisecond)
+
+		// 3. Send unroutable message to test DeadLetterOffice
+		_ = sys.Send(actor.Message{
+			ID:        "orphan-task",
+			Sender:    "planner",
+			Recipient: "non-existent-agent",
+			Priority:  actor.PriorityNormal,
+			Payload:   map[string]interface{}{"note": "unroutable"},
+		})
+
+		time.Sleep(20 * time.Millisecond)
+
+		report := sys.Audit()
+
+		if *mermaid {
+			fmt.Println(actor.RenderMermaidSupervisionTree(sys))
+			return
+		}
+
+		fmt.Print(actor.RenderActorScorecard(report))
+
+		if *strict && (sup.Escalated() || !report.AllResilient) {
+			os.Exit(1)
+		}
+		_ = demo
+		return
+
 	default:
 		printHelp()
 	}
@@ -2836,6 +2930,7 @@ func printHelp() {
 	fmt.Println("  graph       StateGraph cyclic multi-agent workflow engine & time-travel debugger")
 	fmt.Println("  cdc         Database Change Data Capture (CDC) transaction journal & semantic rollback")
 	fmt.Println("  sandbox     Deterministic container sandbox execution hypervisor & CoW overlay rollback")
+	fmt.Println("  actor       Distributed agent actor mesh, supervision trees & fault-tolerant mailboxes")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
