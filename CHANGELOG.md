@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Recursive Multi-Agent Research Engine & Grounded Synthesis Tree (`pkg/research`)**: Reverse-engineered Perplexity / OpenAI Deep Research-style recursive goal decomposition into structured hypothesis nodes, multi-source evidence extraction (local code, docs, trace sessions, web), cryptographic SHA-256 citation digests, and hallucination pruning.
+- **Cross-Source Contradiction Resolution & Conflict Forensics**: Automated semantic conflict detection between contradictory assertions across heterogeneous documents with severity scoring and confidence-weighted resolution strategies.
+- **Mermaid Research Tree Visualizer & Executive Brief Generator (`agentvcr research`)**: Interactive terminal scorecard with confidence progress bars, dynamic markdown footnotes (`[^CIT-1]`), and automatic Mermaid flowchart DAG export.
 - **Speculative Multi-Token AST Predictor & Fast-Tab Engine (`pkg/speculate`)**: Reverse-engineered Cursor-style sub-50ms multi-line code edit predictor using syntactic signature matching, dynamic pattern registration, and typing speed time-savings estimator.
 - **Fast-Tab Interactive CLI Demonstration (`agentvcr speculate -fast-tab`)**: Instant terminal preview of speculative multi-line syntax drafts with line-level diff highlighting and confidence metrics.
 - **Real-Time Telemetry Event Hub & Streaming Flight Controller (`pkg/dashboard`)**: In-memory Pub/Sub fan-out telemetry bus with channel-based subscriber multiplexing and SSE live broadcast streaming (`/api/stream/events`).
