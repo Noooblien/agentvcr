@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **FinOps Token Budget Circuit Breaker & Runaway Cost Protector (`pkg/finops`)**: Real-time microsecond spend velocity and token accounting guardrail preventing runaway agent loops, recursive API billing explosions, and budget overruns.
+- **Model Rate Cards & Precision Microdollar Pricing**: Real-time pricing calculator modeling input, output, and cached input token rates across OpenAI (`gpt-4o`, `gpt-4o-mini`, `o1`) and Anthropic Claude (`claude-3-7-sonnet`, `claude-3-5-haiku`).
+- **Defensive Multi-Threshold Enforcement**: Configurable policy tiers (`ALLOW`, `WARN`, `THROTTLE`, `DOWNGRADE`, `HARD_KILL`) with automated model downgrading (e.g. `gpt-4o` $\to$ `gpt-4o-mini`) when approaching budget limits.
+- **Sliding-Window Burn-Rate Anomaly Detection**: Tracks velocity of token spend ($/minute) to intercept runaway loops and recursive recursion bugs before credit limits are exhausted.
+- **Interactive FinOps Terminal Scorecard & Mermaid Visualizer (`agentvcr finops`)**: Rich ANSI terminal dashboard tracking agent spend, utilization, burn rates, and circuit breaker trip reasons with Mermaid topology diagrams.
 - **Autonomous Hierarchical Memory Consolidation & Ebbinghaus Forgetting Curves (`pkg/memory`)**: Multi-tiered agent memory engine that consolidates raw episodic turns into synthesized reflection clusters and extracts permanent semantic knowledge graph triples, preventing prompt context window blowups and token waste.
 - **Ebbinghaus Decay Curve & Access Reinforcement**: Exponential forgetting function $R(t) = S \cdot e^{-\lambda \Delta t} + \alpha \cdot \ln(1 + \text{AccessCount})$ that continuously prunes stale ephemeral command outputs while reinforcing accessed memories with stability multipliers.
 - **Semantic Knowledge Graph & Contradiction Resolution**: Extracts structured knowledge triples (Subject-Predicate-Object) for architectural decisions and user preferences, automatically resolving contradictory facts when preferences evolve.

@@ -30,6 +30,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/ebpf"
 	"github.com/Noooblien/agentvcr/pkg/enclave"
 	"github.com/Noooblien/agentvcr/pkg/eval"
+	"github.com/Noooblien/agentvcr/pkg/finops"
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
 	"github.com/Noooblien/agentvcr/pkg/gateway"
@@ -3146,6 +3147,86 @@ func main() {
 		_ = demo
 		return
 
+	case "finops":
+		finCmd := flag.NewFlagSet("finops", flag.ExitOnError)
+		demo := finCmd.Bool("demo", false, "Run FinOps token budget circuit breaker demonstration")
+		mermaid := finCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of FinOps circuit breaker topology")
+		strict := finCmd.Bool("strict", false, "Exit with non-zero exit code if runaway spend causes circuit hard-kill")
+		_ = finCmd.Parse(os.Args[2:])
+
+		manager := finops.NewFinOpsManager("agentvcr-swarm-finops")
+		now := time.Now()
+
+		// 1. Agent Alpha: Healthy Agent with $1.00 budget
+		manager.RegisterAgent(finops.BudgetPolicy{
+			PolicyID:             "policy-alpha",
+			AgentID:              "agent-alpha-healthy",
+			MaxCostUSD:           1.00,
+			MaxTotalTokens:       100000,
+			WarnThresholdPct:     0.70,
+			ThrottleThresholdPct: 0.85,
+			DowngradeModel:       "gpt-4o-mini",
+			EnforceHardLimit:     true,
+			SlidingWindow:        time.Minute,
+		})
+
+		// 2. Agent Beta: Tight Budget ($0.10) with Auto-Downgrade from gpt-4o -> gpt-4o-mini
+		manager.RegisterAgent(finops.BudgetPolicy{
+			PolicyID:             "policy-beta",
+			AgentID:              "agent-beta-downgrade",
+			MaxCostUSD:           0.10,
+			MaxTotalTokens:       50000,
+			WarnThresholdPct:     0.50,
+			ThrottleThresholdPct: 0.70,
+			DowngradeModel:       "gpt-4o-mini",
+			EnforceHardLimit:     true,
+			SlidingWindow:        time.Minute,
+		})
+
+		// 3. Agent Gamma: Runaway Looping Agent with Hard Kill Ceiling ($0.05)
+		manager.RegisterAgent(finops.BudgetPolicy{
+			PolicyID:             "policy-gamma",
+			AgentID:              "agent-gamma-runaway",
+			MaxCostUSD:           0.05,
+			MaxTotalTokens:       20000,
+			WarnThresholdPct:     0.60,
+			ThrottleThresholdPct: 0.80,
+			EnforceHardLimit:     true,
+			SlidingWindow:        time.Minute,
+		})
+
+		ctx := context.Background()
+		mockInvoker := func(ctx context.Context, model string, promptTokens, completionTokens int) (int, int, error) {
+			return promptTokens, 300, nil
+		}
+
+		// Execute turns on Agent Alpha (Normal $0.01 spend)
+		_, _, _, _ = manager.ExecuteTurn(ctx, "agent-alpha-healthy", "gpt-4o", 1000, now, mockInvoker)
+
+		// Execute turns on Agent Beta (Crosses 70% threshold -> triggers auto-downgrade to gpt-4o-mini)
+		_, _, _, _ = manager.ExecuteTurn(ctx, "agent-beta-downgrade", "gpt-4o", 4000, now, mockInvoker)
+		_, _, _, _ = manager.ExecuteTurn(ctx, "agent-beta-downgrade", "gpt-4o", 4000, now, mockInvoker)
+
+		// Execute turns on Agent Gamma (Runaway loop -> trips circuit breaker and triggers HARD_KILL)
+		_, _, _, _ = manager.ExecuteTurn(ctx, "agent-gamma-runaway", "o1", 1000, now, mockInvoker)
+		_, _, _, _ = manager.ExecuteTurn(ctx, "agent-gamma-runaway", "o1", 1000, now, mockInvoker)
+		_, _, _, errRunaway := manager.ExecuteTurn(ctx, "agent-gamma-runaway", "o1", 1000, now, mockInvoker)
+
+		report := manager.Audit(now)
+
+		if *mermaid {
+			fmt.Println(finops.RenderFinOpsMermaid(report))
+			return
+		}
+
+		fmt.Print(finops.RenderFinOpsScorecard(report))
+
+		if *strict && errRunaway != nil {
+			log.Fatalf("Runaway spend circuit breaker tripped as expected: %v", errRunaway)
+		}
+		_ = demo
+		return
+
 	default:
 		printHelp()
 	}
@@ -3209,6 +3290,7 @@ func printHelp() {
 	fmt.Println("  actor       Distributed agent actor mesh, supervision trees & fault-tolerant mailboxes")
 	fmt.Println("  gateway     Model Gateway, circuit breaker, semantic routing & cache failover")
 	fmt.Println("  memory      Autonomous hierarchical memory consolidation & Ebbinghaus decay")
+	fmt.Println("  finops      Token budget circuit breaker, runaway spend protector & rate cards")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -3266,4 +3348,5 @@ func printHelp() {
 	fmt.Println("  agentvcr actor --demo -strict")
 	fmt.Println("  agentvcr gateway --demo -strict")
 	fmt.Println("  agentvcr memory --demo -strict")
+	fmt.Println("  agentvcr finops --demo -strict")
 }
