@@ -125,6 +125,7 @@ client = OpenAI(
 - [x] Real-time pub/sub telemetry event hub, live SSE broadcast & web flight control (`serve`)
 - [x] Speculative multi-token AST predictor & Cursor-style Fast-Tab editor engine (`speculate`)
 - [x] Recursive multi-agent research tree, SHA-256 citation grounding & hallucination pruner (`research`)
+- [x] Language Server Protocol (LSP 3.17) daemon, stdio/TCP streaming & Fast-Tab editor RPC (`lsp`)
 
 ---
 

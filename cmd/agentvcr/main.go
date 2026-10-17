@@ -32,6 +32,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/heal"
 	"github.com/Noooblien/agentvcr/pkg/leaderboard"
 	"github.com/Noooblien/agentvcr/pkg/lineage"
+	"github.com/Noooblien/agentvcr/pkg/lsp"
 	"github.com/Noooblien/agentvcr/pkg/mcp"
 	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/perf"
@@ -2115,6 +2116,69 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "lsp":
+		lspCmd := flag.NewFlagSet("lsp", flag.ExitOnError)
+		stdio := lspCmd.Bool("stdio", false, "Run LSP daemon over standard input/output (stdio)")
+		port := lspCmd.Int("port", 0, "Run LSP daemon over TCP on specified port (e.g. 8989)")
+		demo := lspCmd.Bool("demo", false, "Run interactive terminal demonstration of LSP capabilities and Fast-Tab")
+		_ = lspCmd.Parse(os.Args[2:])
+
+		server := lsp.NewServer(nil)
+
+		if *demo || (!*stdio && *port == 0) {
+			// Demo mode
+			openFrame := []byte(`{
+				"jsonrpc": "2.0",
+				"method": "textDocument/didOpen",
+				"params": {
+					"textDocument": {
+						"uri": "file:///workspace/handler.go",
+						"languageId": "go",
+						"version": 1,
+						"text": "package main\n\nfunc ProcessTransaction() error {\n\terr := gateway.Charge()\n}"
+					}
+				}
+			}`)
+			_, _ = server.HandleMessage(openFrame)
+
+			ftFrame := []byte(`{
+				"jsonrpc": "2.0",
+				"id": 1,
+				"method": "agentvcr/fastTab",
+				"params": {
+					"textDocument": {"uri": "file:///workspace/handler.go"},
+					"position": {"line": 3, "character": 25}
+				}
+			}`)
+			respRaw, _ := server.HandleMessage(ftFrame)
+			var ftResp lsp.Response
+			_ = json.Unmarshal(respRaw, &ftResp)
+			ftBytes, _ := json.Marshal(ftResp.Result)
+			var ftResult lsp.FastTabResult
+			_ = json.Unmarshal(ftBytes, &ftResult)
+
+			statusFrame := []byte(`{"jsonrpc": "2.0", "id": 2, "method": "agentvcr/status"}`)
+			stRaw, _ := server.HandleMessage(statusFrame)
+			var stResp lsp.Response
+			_ = json.Unmarshal(stRaw, &stResp)
+			stBytes, _ := json.Marshal(stResp.Result)
+			var status lsp.ServerStatusResult
+			_ = json.Unmarshal(stBytes, &status)
+
+			fmt.Print(lsp.RenderLSPScorecard(status, &ftResult))
+			return
+		}
+
+		if *port > 0 {
+			addr := fmt.Sprintf(":%d", *port)
+			fmt.Printf("🚀 [AgentVCR] LSP 3.17 Daemon listening on TCP %s (Fast-Tab Active)\n", addr)
+			log.Fatal(server.ServeTCP(addr))
+		}
+
+		if *stdio {
+			log.Fatal(server.Serve(os.Stdin, os.Stdout))
+		}
+
 	default:
 		printHelp()
 	}
@@ -2169,6 +2233,7 @@ func printHelp() {
 	fmt.Println("  compact     Context window compactor, token waste profiler & KV-cache optimizer")
 	fmt.Println("  bench-perf  Sub-millisecond latency profiling, micro-benchmarks & concurrency stress")
 	fmt.Println("  research    Autonomous recursive multi-agent research engine & citation tree")
+	fmt.Println("  lsp         Language Server Protocol (LSP 3.17) daemon & Fast-Tab editor engine")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -2216,4 +2281,6 @@ func printHelp() {
 	fmt.Println("  agentvcr compact -id trace_1 -strategy lossless -strict")
 	fmt.Println("  agentvcr bench-perf -target all -iterations 200 -max-p99-us 2000 -strict")
 	fmt.Println("  agentvcr research -query 'concurrency bottlenecks' -depth 3 -strict")
+	fmt.Println("  agentvcr lsp --demo")
+	fmt.Println("  agentvcr lsp --stdio")
 }
