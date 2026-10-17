@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Chrome DevTools Protocol (CDP) Flight Recorder & Virtual DOM Journal (`pkg/cdp`)**: Bidirectional JSON-RPC 2.0 WebSocket frame interceptor capturing page navigation, network waterfalls, DOM mutations, console logs, runtime exceptions, and agent click/type interactions.
+- **W3C HAR 1.2 Export & Network Waterfall Analytics**: Spec-compliant HTTP Archive (HAR 1.2) export with detailed connection timings (DNS, Connect, SSL, TTFB, Download), transfer sizes, and P50/P95 latency percentiles.
+- **In-Memory Virtual DOM Reconstruction & Fast QuerySelector**: Real-time virtual DOM tree synchronization tracking node insertions, attribute modifications, removals, and CSS selector matching (`#id`, `.class`, `tag`).
+- **Deterministic Virtual Mock CDP Server (`pkg/cdp/mock.go`)**: Zero-side-effect headless mock CDP endpoint enabling offline agent replay, mock DOM queries, and synthetic JS evaluations without launching Chromium.
+- **Browser Agent SLA Auditor & Terminal Scorecard (`agentvcr cdp`)**: Interactive ANSI terminal scorecard validating page load times, 4xx/5xx HTTP errors, and uncaught JavaScript runtime exceptions.
 - **Real-Time Voice API Flight Recorder & Acoustic Waveform Synchronizer (`pkg/voice`)**: Real-time dual-track flight recorder capturing bidirectional WebSocket/WebRTC audio streams for OpenAI Realtime and Gemini Live Voice APIs with microsecond timestamp synchronization.
 - **Audio Energy & Decibel Telemetry**: 16-bit PCM Linear LE RMS calculation, decibel sound pressure level ($dB_{FS}$) tracking, and 8-level Unicode acoustic amplitude waveform rendering (` ▂▃▄▅▆▇█`).
 - **Energy-Based Voice Activity Detection (VAD)**: Multi-packet speech boundary segmentation detecting user/agent voice onsets and trailing speech pauses with configurable decibel thresholds.

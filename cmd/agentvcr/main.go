@@ -17,6 +17,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/byzantine"
 	"github.com/Noooblien/agentvcr/pkg/canary"
 	"github.com/Noooblien/agentvcr/pkg/causal"
+	"github.com/Noooblien/agentvcr/pkg/cdp"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/compact"
 	"github.com/Noooblien/agentvcr/pkg/consensus"
@@ -2296,6 +2297,219 @@ func main() {
 			return
 		}
 
+	case "cdp":
+		cdpCmd := flag.NewFlagSet("cdp", flag.ExitOnError)
+		demo := cdpCmd.Bool("demo", false, "Run realistic browser agent CDP flight recording demonstration")
+		sessionID := cdpCmd.String("id", "", "CDP session ID")
+		outHAR := cdpCmd.String("har", "", "Export network traffic to W3C HAR 1.2 JSON file")
+		strict := cdpCmd.Bool("strict", false, "Exit with non-zero exit code if browser SLA is breached")
+		_ = cdpCmd.Parse(os.Args[2:])
+
+		sid := *sessionID
+		if sid == "" {
+			sid = fmt.Sprintf("cdp_session_%d", time.Now().Unix())
+		}
+
+		rec := cdp.NewCDPRecorder(sid)
+
+		if *demo || sid != "" {
+			now := time.Now().UTC()
+
+			// 1. Navigation
+			navParams, _ := json.Marshal(map[string]interface{}{
+				"url": "https://app.agentvcr.dev/deployments",
+			})
+			_ = rec.InterceptFrame(&cdp.CDPFrame{
+				ID:        1,
+				Method:    cdp.MethodPageNavigate,
+				Params:    navParams,
+				Timestamp: now,
+			})
+
+			// 2. Network Assets & API Calls
+			assets := []struct {
+				reqID  string
+				url    string
+				method string
+				status int
+				mime   string
+				size   int64
+				ttfb   float64
+				dur    float64
+			}{
+				{"req-001", "https://app.agentvcr.dev/deployments", "GET", 200, "text/html", 8420, 45.0, 68.0},
+				{"req-002", "https://app.agentvcr.dev/assets/app.js", "GET", 200, "application/javascript", 184200, 32.0, 115.0},
+				{"req-003", "https://app.agentvcr.dev/assets/style.css", "GET", 200, "text/css", 42100, 28.0, 52.0},
+				{"req-004", "https://api.agentvcr.dev/v1/auth/session", "POST", 200, "application/json", 512, 58.0, 85.0},
+				{"req-005", "https://api.agentvcr.dev/v1/deployments", "GET", 200, "application/json", 12400, 72.0, 94.0},
+			}
+
+			for i, a := range assets {
+				offset := time.Duration(i*20) * time.Millisecond
+				reqData, _ := json.Marshal(map[string]interface{}{
+					"requestId": a.reqID,
+					"request": map[string]interface{}{
+						"url":    a.url,
+						"method": a.method,
+						"headers": map[string]string{
+							"User-Agent": "AgentVCR-Autonomous-Browser/1.0",
+							"Accept":     "*/*",
+						},
+					},
+					"initiator": map[string]interface{}{"type": "parser"},
+				})
+				_ = rec.InterceptFrame(&cdp.CDPFrame{
+					Method:    cdp.MethodNetworkRequestWillSent,
+					Params:    reqData,
+					Timestamp: now.Add(offset),
+				})
+
+				respData, _ := json.Marshal(map[string]interface{}{
+					"requestId": a.reqID,
+					"response": map[string]interface{}{
+						"url":        a.url,
+						"status":     a.status,
+						"statusText": "OK",
+						"mimeType":   a.mime,
+						"headers":    map[string]string{"Content-Type": a.mime},
+						"timing": map[string]interface{}{
+							"dnsStart":          1.0,
+							"dnsEnd":            8.0,
+							"connectStart":      8.0,
+							"connectEnd":        20.0,
+							"sendStart":         21.0,
+							"sendEnd":           22.0,
+							"receiveHeadersEnd": 22.0 + a.ttfb,
+						},
+					},
+				})
+				_ = rec.InterceptFrame(&cdp.CDPFrame{
+					Method:    cdp.MethodNetworkResponseRecv,
+					Params:    respData,
+					Timestamp: now.Add(offset + time.Duration(a.ttfb)*time.Millisecond),
+				})
+
+				finishData, _ := json.Marshal(map[string]interface{}{
+					"requestId":         a.reqID,
+					"encodedDataLength": a.size,
+				})
+				_ = rec.InterceptFrame(&cdp.CDPFrame{
+					Method:    cdp.MethodNetworkLoadingFinish,
+					Params:    finishData,
+					Timestamp: now.Add(offset + time.Duration(a.dur)*time.Millisecond),
+				})
+			}
+
+			// 3. Page Load Event
+			_ = rec.InterceptFrame(&cdp.CDPFrame{
+				Method:    cdp.MethodPageLoadEventFired,
+				Params:    json.RawMessage(`{}`),
+				Timestamp: now.Add(210 * time.Millisecond),
+			})
+
+			// 4. Virtual DOM Tree Initial State
+			initialDOM := &cdp.DOMNode{
+				NodeID:         1,
+				NodeType:       9,
+				NodeName:       "#document",
+				ChildNodeCount: 1,
+				Children: []*cdp.DOMNode{
+					{
+						NodeID:         2,
+						NodeType:       1,
+						NodeName:       "HTML",
+						ChildNodeCount: 1,
+						Children: []*cdp.DOMNode{
+							{
+								NodeID:         3,
+								NodeType:       1,
+								NodeName:       "BODY",
+								ChildNodeCount: 2,
+								Children: []*cdp.DOMNode{
+									{
+										NodeID:     4,
+										NodeType:   1,
+										NodeName:   "DIV",
+										Attributes: map[string]string{"id": "app-container", "class": "dashboard"},
+									},
+									{
+										NodeID:     5,
+										NodeType:   1,
+										NodeName:   "BUTTON",
+										Attributes: map[string]string{"id": "trigger-rollback", "class": "btn danger"},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			domBytes, _ := json.Marshal(map[string]interface{}{"root": initialDOM})
+			_ = rec.InterceptFrame(&cdp.CDPFrame{
+				Method:    cdp.MethodDOMGetDocument,
+				Result:    domBytes,
+				Timestamp: now.Add(220 * time.Millisecond),
+			})
+
+			// 5. Agent Interaction: Click button
+			mouseParams, _ := json.Marshal(map[string]interface{}{
+				"type":   "mousePressed",
+				"x":      450.0,
+				"y":      220.0,
+				"button": "left",
+			})
+			_ = rec.InterceptFrame(&cdp.CDPFrame{
+				Method:    cdp.MethodInputDispatchMouse,
+				Params:    mouseParams,
+				Timestamp: now.Add(350 * time.Millisecond),
+			})
+
+			// 6. DOM Mutation: Modal Dialog inserted
+			insertModal, _ := json.Marshal(map[string]interface{}{
+				"parentNodeId": 3,
+				"node": &cdp.DOMNode{
+					NodeID:     6,
+					NodeType:   1,
+					NodeName:   "DIV",
+					Attributes: map[string]string{"id": "confirm-modal", "class": "modal active"},
+				},
+			})
+			_ = rec.InterceptFrame(&cdp.CDPFrame{
+				Method:    cdp.MethodDOMChildNodeInserted,
+				Params:    insertModal,
+				Timestamp: now.Add(380 * time.Millisecond),
+			})
+
+			// 7. Console logs
+			log1, _ := json.Marshal(map[string]interface{}{
+				"type": "log",
+				"args": []map[string]interface{}{{"value": "[VCR] React hydration complete. Active routes: /deployments"}},
+			})
+			_ = rec.InterceptFrame(&cdp.CDPFrame{
+				Method:    cdp.MethodRuntimeConsoleAPI,
+				Params:    log1,
+				Timestamp: now.Add(240 * time.Millisecond),
+			})
+
+			// Finalize and print scorecard
+			report := rec.FinalizeAudit(cdp.DefaultCDPAuditConfig())
+			fmt.Print(cdp.RenderCDPScorecard(report))
+
+			if *outHAR != "" {
+				_, harData, err := rec.ExportHAR()
+				if err != nil {
+					log.Fatalf("Failed to export HAR: %v", err)
+				}
+				_ = os.WriteFile(*outHAR, harData, 0644)
+				fmt.Printf("📦 [AgentVCR] Exported W3C HAR 1.2 network archive to: %s\n\n", *outHAR)
+			}
+
+			if *strict && !report.SLAPassed {
+				os.Exit(1)
+			}
+			return
+		}
+
 	default:
 		printHelp()
 	}
@@ -2352,6 +2566,7 @@ func printHelp() {
 	fmt.Println("  research    Autonomous recursive multi-agent research engine & citation tree")
 	fmt.Println("  lsp         Language Server Protocol (LSP 3.17) daemon & Fast-Tab editor engine")
 	fmt.Println("  voice       Real-Time Voice API flight recorder & acoustic waveform synchronizer")
+	fmt.Println("  cdp         Chrome DevTools Protocol (CDP) flight recorder & DOM mutation journal")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -2403,4 +2618,5 @@ func printHelp() {
 	fmt.Println("  agentvcr lsp --demo")
 	fmt.Println("  agentvcr lsp --stdio")
 	fmt.Println("  agentvcr voice --demo -strict")
+	fmt.Println("  agentvcr cdp --demo -strict")
 }
