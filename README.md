@@ -122,6 +122,7 @@ client = OpenAI(
 - [x] Context window compactor, token waste profiler & KV-cache optimizer (`compact`)
 - [x] Sub-millisecond latency profiling, micro-benchmarks & concurrency stress harness (`bench-perf`)
 - [x] Continuous coverage-guided native Go fuzzing suite (`tests/fuzz_target_test.go`)
+- [x] Real-time pub/sub telemetry event hub, live SSE broadcast & web flight control (`serve`)
 
 ---
 
