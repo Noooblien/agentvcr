@@ -138,6 +138,7 @@ client = OpenAI(
 - [x] Model Gateway, circuit breaker, semantic routing & cache failover (`gateway`)
 - [x] Autonomous hierarchical memory consolidation & Ebbinghaus decay (`memory`)
 - [x] FinOps token budget circuit breaker, runaway spend protector & rate cards (`finops`)
+- [x] Session checkpoint hibernation, incremental delta compression & hot restoration (`checkpoint`)
 
 ---
 
