@@ -40,6 +40,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/lineage"
 	"github.com/Noooblien/agentvcr/pkg/lsp"
 	"github.com/Noooblien/agentvcr/pkg/mcp"
+	"github.com/Noooblien/agentvcr/pkg/memory"
 	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/perf"
 	"github.com/Noooblien/agentvcr/pkg/policy"
@@ -3029,6 +3030,122 @@ func main() {
 		_ = demo
 		return
 
+	case "memory":
+		memCmd := flag.NewFlagSet("memory", flag.ExitOnError)
+		demo := memCmd.Bool("demo", false, "Run autonomous hierarchical memory consolidation demonstration")
+		mermaid := memCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of memory hierarchy")
+		strict := memCmd.Bool("strict", false, "Exit with non-zero exit code if token reduction ratio is below 40%")
+		_ = memCmd.Parse(os.Args[2:])
+
+		cfg := memory.DefaultMemoryConfig()
+		cfg.ConsolidationBatchSize = 5
+		engine := memory.NewMemoryEngine("agentvcr-swarm-memory", cfg)
+
+		now := time.Now()
+
+		// 1. Ingest episodic trace turns from autonomous coding session
+		episodes := []*memory.EpisodicTurn{
+			{
+				Role:       "user",
+				Content:    "Build a distributed transaction coordinator. Always use CockroachDB for multi-region consensus.",
+				Importance: 0.95,
+				Timestamp:  now.Add(-48 * time.Hour),
+			},
+			{
+				Role:        "assistant",
+				Action:      "mkdir -p pkg/coordinator && touch state.go",
+				Observation: "Created coordinator package scaffold",
+				Importance:  0.20,
+				Timestamp:   now.Add(-47 * time.Hour),
+			},
+			{
+				Role:        "tool",
+				Action:      "go test -v ./pkg/coordinator",
+				Observation: "PASS: initial test suite",
+				Importance:  0.35,
+				Timestamp:   now.Add(-46 * time.Hour),
+			},
+			{
+				Role:       "user",
+				Content:    "Requirement: standardizes_on OAuth2 PKCE authorization code grant with hardware bound tokens.",
+				Importance: 0.90,
+				Timestamp:  now.Add(-45 * time.Hour),
+			},
+			{
+				Role:        "assistant",
+				Action:      "go fmt ./...",
+				Observation: "Formatted 3 Go source files",
+				Importance:  0.10,
+				Timestamp:   now.Add(-44 * time.Hour),
+			},
+			{
+				Role:        "assistant",
+				Action:      "git commit -m 'feat: add initial state machine'",
+				Observation: "[main a1b2c3d] committed",
+				Importance:  0.30,
+				Timestamp:   now.Add(-43 * time.Hour),
+			},
+			{
+				Role:        "assistant",
+				Action:      "cat /etc/hosts",
+				Observation: "127.0.0.1 localhost",
+				Importance:  0.05,
+				Timestamp:   now.Add(-40 * time.Hour), // Trivial ephemeral command -> eligible for decay
+			},
+			{
+				Role:        "assistant",
+				Action:      "benchmark concurrency under 10k connections",
+				Observation: "Throughput 185,000 tx/sec with 1.2ms p99 latency",
+				Importance:  0.65,
+				Timestamp:   now.Add(-24 * time.Hour),
+			},
+			{
+				Role:        "assistant",
+				Action:      "verify raft heartbeats and election timeouts",
+				Observation: "Quorum verified across 5 consensus replicas",
+				Importance:  0.70,
+				Timestamp:   now.Add(-12 * time.Hour),
+			},
+			{
+				Role:       "user",
+				Content:    "Note: standardizes_on ECDSA P-256 for enclave attestation keys.",
+				Importance: 0.85,
+				Timestamp:  now.Add(-1 * time.Hour),
+			},
+		}
+
+		for _, ep := range episodes {
+			engine.RecordEpisode(ep)
+		}
+
+		// 2. Run hierarchical consolidation (clusters episodes, extracts triples, prunes decayed ephemeral items)
+		report := engine.Consolidate(now)
+
+		// 3. Test Context-Window working memory recall under 500 token budget
+		query := memory.RecallQuery{
+			QueryText:        "What database and auth standards were chosen?",
+			TokenBudget:      500,
+			MinRetention:     0.20,
+			CurrentTimestamp: now,
+		}
+		recalledNodes, tokensUsed := engine.Recall(query)
+		_ = recalledNodes
+		_ = tokensUsed
+
+		if *mermaid {
+			fmt.Println(memory.RenderMemoryMermaid(engine))
+			return
+		}
+
+		decayEng := memory.NewDecayEngine(cfg)
+		fmt.Print(memory.RenderMemoryScorecard(report, decayEng, now))
+
+		if *strict && report.TokenSavingsRatio < 0.40 {
+			log.Fatalf("Memory consolidation token savings ratio below strict 40%% threshold: %.2f", report.TokenSavingsRatio)
+		}
+		_ = demo
+		return
+
 	default:
 		printHelp()
 	}
@@ -3091,6 +3208,7 @@ func printHelp() {
 	fmt.Println("  sandbox     Deterministic container sandbox execution hypervisor & CoW overlay rollback")
 	fmt.Println("  actor       Distributed agent actor mesh, supervision trees & fault-tolerant mailboxes")
 	fmt.Println("  gateway     Model Gateway, circuit breaker, semantic routing & cache failover")
+	fmt.Println("  memory      Autonomous hierarchical memory consolidation & Ebbinghaus decay")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -3147,4 +3265,5 @@ func printHelp() {
 	fmt.Println("  agentvcr cdc --demo -strict")
 	fmt.Println("  agentvcr actor --demo -strict")
 	fmt.Println("  agentvcr gateway --demo -strict")
+	fmt.Println("  agentvcr memory --demo -strict")
 }
