@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Sub-Millisecond Latency Benchmarking & Profiling Engine (`pkg/perf`)**: High-precision monotonic timing suite measuring in-flight proxy overhead, MCP frame interception, CoW snapshot branching/rollback, context compaction, and JSON storage serialization with P50/P90/P99/P99.9 percentiles and memory allocation tracking.
+- **Concurrency Load & Stress Runner (`pkg/perf/stress.go`)**: Multi-goroutine worker pool simulating high-concurrency bursty agent workloads with lock contention and error rate tracking.
+- **Executive Performance Scorecard (`pkg/perf/scorecard.go`)**: Rich ANSI terminal scorecard rendering percentile tables, ops/sec throughput, SLA thresholds, and memory allocations.
+- **Go Native Continuous Fuzz Testing (`tests/fuzz_target_test.go`)**: Coverage-guided fuzzing targets (`FuzzMCPJSONRPCFrame`, `FuzzSessionDeserialization`, `FuzzCompactorDeduplication`) protecting against malformed frames, corrupted sessions, and parser panics.
 - **Context Window Compactor & Token Waste Profiler (`pkg/compact`)**: Lossless deduplication of redundant tool outputs via content hashing, automatic collapsing of intermediate retry chains, and stale read pruning.
 - **Upstream KV-Cache Prefix Optimizer**: Reorganizes dynamic/volatile prompt components to guarantee high cache hit ratios on Anthropic prompt caching and OpenAI prefix caching.
 - **Bidirectional Model Context Protocol (MCP) Interceptor (`pkg/mcp`)**: Real-time stdio/SSE JSON-RPC 2.0 frame capture, canonical SHA-256 argument hashing, and monotonic latency telemetry.

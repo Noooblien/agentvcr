@@ -34,6 +34,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/lineage"
 	"github.com/Noooblien/agentvcr/pkg/mcp"
 	"github.com/Noooblien/agentvcr/pkg/otel"
+	"github.com/Noooblien/agentvcr/pkg/perf"
 	"github.com/Noooblien/agentvcr/pkg/policy"
 	"github.com/Noooblien/agentvcr/pkg/pqc"
 	"github.com/Noooblien/agentvcr/pkg/privacy"
@@ -1974,6 +1975,52 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "bench-perf":
+		perfCmd := flag.NewFlagSet("bench-perf", flag.ExitOnError)
+		targetStr := perfCmd.String("target", "all", "Subsystem to profile: 'all', 'proxy', 'mcp', 'compact', 'cow', 'storage', or 'stress'")
+		concurrency := perfCmd.Int("concurrency", 4, "Concurrent worker pool size")
+		iterations := perfCmd.Int("iterations", 200, "Number of benchmark iterations")
+		warmup := perfCmd.Int("warmup", 20, "Number of warmup cycles")
+		maxP99 := perfCmd.Float64("max-p99-us", 2000.0, "Latency SLA threshold in microseconds (P99)")
+		strict := perfCmd.Bool("strict", false, "Exit with non-zero exit code if latency SLA is breached")
+		_ = perfCmd.Parse(os.Args[2:])
+
+		if *targetStr == "stress" {
+			runner := perf.NewStressRunner(*concurrency, *iterations)
+			res, err := runner.RunConcurrentFlightRecorder()
+			if err != nil {
+				log.Fatalf("Stress benchmark failed: %v", err)
+			}
+			fmt.Printf("\n⚡ [AgentVCR] Concurrency Stress Run Complete (%d workers, %d ops, %.2f ms)\n",
+				res.Concurrency, res.TotalOperations, res.DurationMs)
+			fmt.Printf("   Throughput: %.0f ops/sec | Errors: %d\n", res.ThroughputOpsSec, res.ErrorCount)
+			fmt.Printf("   P50: %.1fµs | P90: %.1fµs | P99: %.1fµs | Min: %.1fµs | Max: %.1fµs\n\n",
+				res.Percentiles.P50Us, res.Percentiles.P90Us, res.Percentiles.P99Us, res.Percentiles.MinUs, res.Percentiles.MaxUs)
+			if *strict && res.Percentiles.P99Us > *maxP99 {
+				log.Fatalf("SLA breach: P99 %.1fµs exceeded SLA %.1fµs", res.Percentiles.P99Us, *maxP99)
+			}
+			return
+		}
+
+		cfg := perf.DefaultBenchmarkConfig()
+		cfg.Target = perf.BenchmarkTarget(*targetStr)
+		cfg.Concurrency = *concurrency
+		cfg.Iterations = *iterations
+		cfg.WarmupIterations = *warmup
+		cfg.MaxP99Us = *maxP99
+		cfg.Strict = *strict
+
+		report, err := perf.RunBenchmark(cfg)
+		if err != nil {
+			log.Fatalf("Performance benchmarking failed: %v", err)
+		}
+
+		fmt.Print(perf.RenderPerformanceScorecard(report))
+
+		if *strict && !report.OverallPassed {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -2026,6 +2073,7 @@ func printHelp() {
 	fmt.Println("  drift       Autonomous cross-agent behavioral drift & entropy-guided policy synthesis")
 	fmt.Println("  mcp         Model Context Protocol stdio/SSE interceptor, validator & virtual replay")
 	fmt.Println("  compact     Context window compactor, token waste profiler & KV-cache optimizer")
+	fmt.Println("  bench-perf  Sub-millisecond latency profiling, micro-benchmarks & concurrency stress")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -2071,4 +2119,5 @@ func printHelp() {
 	fmt.Println("  agentvcr stego -id trace_1 -entropy 4.85 -strict")
 	fmt.Println("  agentvcr mcp -action demo")
 	fmt.Println("  agentvcr compact -id trace_1 -strategy lossless -strict")
+	fmt.Println("  agentvcr bench-perf -target all -iterations 200 -max-p99-us 2000 -strict")
 }

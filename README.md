@@ -117,7 +117,11 @@ client = OpenAI(
 - [x] Distributed multi-agent semantic consensus ledger & Byzantine fault recovery (`byzantine`)
 - [x] Autonomous cross-agent covert communication channel detector & steganography analyzer (`stego`)
 - [x] Real-time dynamic taint-tracking engine & Non-Interference Information Flow Control (`taint`)
-- [ ] Autonomous cross-agent behavioral drift & entropy-guided policy synthesis (`drift`)
+- [x] Autonomous cross-agent behavioral drift & entropy-guided policy synthesis (`drift`)
+- [x] Bidirectional Model Context Protocol (MCP) interceptor, validator & virtual replay (`mcp`)
+- [x] Context window compactor, token waste profiler & KV-cache optimizer (`compact`)
+- [x] Sub-millisecond latency profiling, micro-benchmarks & concurrency stress harness (`bench-perf`)
+- [x] Continuous coverage-guided native Go fuzzing suite (`tests/fuzz_target_test.go`)
 
 ---
 
