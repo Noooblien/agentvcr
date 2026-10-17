@@ -1456,12 +1456,57 @@ func main() {
 		healCmd := flag.NewFlagSet("heal", flag.ExitOnError)
 		sessionID := healCmd.String("id", "", "Trace Session ID to diagnose and autonomously repair")
 		apply := healCmd.Bool("apply", true, "Auto-apply synthesized AST patches to produce a repaired trajectory clone")
+		loopback := healCmd.Bool("loopback", false, "Run in-browser console loopback mode (Lovable/Bolt.new style hot-patching)")
+		maxIter := healCmd.Int("max-iter", 5, "Maximum iterative repair cycles in loopback mode")
 		outPath := healCmd.String("out", "", "Output path for the repaired session JSON file")
 		strict := healCmd.Bool("strict", false, "Exit with non-zero exit code if any faults cannot be cleanly repaired")
 		_ = healCmd.Parse(os.Args[2:])
 
+		if *loopback {
+			// In-browser console log loopback self-healing demonstration
+			logs := []heal.ConsoleLog{
+				{
+					Level:   heal.LogLevelError,
+					Source:  "console",
+					Message: "Uncaught ReferenceError: React is not defined",
+					Stack:   "    at App (src/App.tsx:2:1)",
+				},
+				{
+					Level:   heal.LogLevelError,
+					Source:  "unhandled_rejection",
+					Message: "TypeError: Cannot read properties of undefined (reading 'map')",
+					Stack:   "    at UserList (src/UserList.tsx:4:15)",
+				},
+			}
+
+			files := map[string]string{
+				"src/App.tsx":      "export function App() {\n  return <h1>AgentVCR Live</h1>;\n}",
+				"src/UserList.tsx": "export function UserList({ items }) {\n  return (\n    <div>{items.map(i => <span>{i}</span>)}</div>\n  );\n}",
+			}
+
+			lh := heal.NewLoopbackHealer(*maxIter)
+			sim := func(currentFiles map[string]string) []heal.ConsoleLog {
+				var remaining []heal.ConsoleLog
+				if !strings.Contains(currentFiles["src/App.tsx"], "import React") {
+					remaining = append(remaining, logs[0])
+				}
+				if !strings.Contains(currentFiles["src/UserList.tsx"], "?.map(") {
+					remaining = append(remaining, logs[1])
+				}
+				return remaining
+			}
+
+			loopbackSession := lh.ExecuteLoopback(logs, files, sim)
+			fmt.Print(heal.RenderLoopbackScorecard(loopbackSession))
+
+			if *strict && !loopbackSession.ZeroErrorsAchieved {
+				os.Exit(1)
+			}
+			return
+		}
+
 		if *sessionID == "" {
-			log.Fatal("Usage: agentvcr heal -id <session_id> [-apply] [-out <path>] [-strict]")
+			log.Fatal("Usage: agentvcr heal -id <session_id> [-apply] [-out <path>] [-strict] or agentvcr heal -loopback [-max-iter 5]")
 		}
 
 		session, err := store.LoadSession(*sessionID)
@@ -2270,6 +2315,7 @@ func printHelp() {
 	fmt.Println("  agentvcr pqc -id trace_1 -algo dilithium3 -kem -strict")
 	fmt.Println("  agentvcr raft -id trace_1 -nodes 3 -strict")
 	fmt.Println("  agentvcr heal -id trace_1 -apply -strict")
+	fmt.Println("  agentvcr heal -loopback -max-iter 5 -strict")
 	fmt.Println("  agentvcr enclave -id trace_1 -strict")
 	fmt.Println("  agentvcr timing -id trace_1 -max-leak-bits 4.0 -pad -strict")
 	fmt.Println("  agentvcr wasi -id trace_1 -fuel 1000000 -strict")

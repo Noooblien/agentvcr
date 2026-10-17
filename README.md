@@ -126,6 +126,7 @@ client = OpenAI(
 - [x] Speculative multi-token AST predictor & Cursor-style Fast-Tab editor engine (`speculate`)
 - [x] Recursive multi-agent research tree, SHA-256 citation grounding & hallucination pruner (`research`)
 - [x] Language Server Protocol (LSP 3.17) daemon, stdio/TCP streaming & Fast-Tab editor RPC (`lsp`)
+- [x] In-browser console log loopback runtime & Lovable/Bolt.new zero-error hot-patcher (`heal -loopback`)
 
 ---
 
