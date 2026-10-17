@@ -136,6 +136,7 @@ client = OpenAI(
 - [x] Deterministic container sandbox execution hypervisor, CoW overlay rollback & escape guardrails (`sandbox`)
 - [x] Distributed agent actor mesh, supervision trees & fault-tolerant mailboxes (`actor`)
 - [x] Model Gateway, circuit breaker, semantic routing & cache failover (`gateway`)
+- [x] Autonomous hierarchical memory consolidation & Ebbinghaus decay (`memory`)
 
 ---
 

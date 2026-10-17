@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Autonomous Hierarchical Memory Consolidation & Ebbinghaus Forgetting Curves (`pkg/memory`)**: Multi-tiered agent memory engine that consolidates raw episodic turns into synthesized reflection clusters and extracts permanent semantic knowledge graph triples, preventing prompt context window blowups and token waste.
+- **Ebbinghaus Decay Curve & Access Reinforcement**: Exponential forgetting function $R(t) = S \cdot e^{-\lambda \Delta t} + \alpha \cdot \ln(1 + \text{AccessCount})$ that continuously prunes stale ephemeral command outputs while reinforcing accessed memories with stability multipliers.
+- **Semantic Knowledge Graph & Contradiction Resolution**: Extracts structured knowledge triples (Subject-Predicate-Object) for architectural decisions and user preferences, automatically resolving contradictory facts when preferences evolve.
+- **Token-Budgeted Context Recall**: Score-ranked memory retrieval combining relevance, retention, and intrinsic importance, strictly bound to a designated token ceiling for seamless prompt context injection.
+- **Interactive Memory Scorecard & Hierarchy Visualizer (`agentvcr memory`)**: ANSI terminal scorecard tracking active nodes, token compression ratios, retention rankings, and Mermaid memory hierarchy export.
 - **Model Gateway, Circuit Breaker & Semantic Multi-Provider Router (`pkg/gateway`)**: Production-grade LLM routing gateway featuring sliding-window circuit breakers, multi-protocol normalization (OpenAI, Anthropic, Gemini, Ollama), and automatic failover cascades.
 - **Sliding-Window Circuit Breakers & Self-Healing Probes**: Thread-safe per-provider circuit breakers with configurable failure thresholds, rolling error rates, cooldown durations, and half-open canary probes for graceful degradation under rate limits (HTTP 429) or upstream outages.
 - **Semantic Task Complexity Classifier & Tiered Routing**: Automatic intent analysis estimating token length, tool calling requirements, and mathematical/reasoning keywords to route queries to optimal model tiers (`TierFast`, `TierStandard`, `TierReasoning`).
