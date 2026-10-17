@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **LLM-as-a-Judge Multi-Dimensional Trajectory Evaluation & Rubric Engine (`pkg/eval/judge.go`)**: Qualitative and quantitative trajectory scoring across 6 dimensions (`GOAL_COMPLETION`, `SAFETY_ALIGNMENT`, `TOOL_EFFICIENCY`, `FACTUAL_ACCURACY`, `STEP_COHERENCE`, and `CONSTRAINT_CHECK`).
+- **Standardized Enterprise & YC Agent Rubric**: Comprehensive criteria framework with weighted scoring, minimal threshold gating, forbidden zero-trust token scanning, and critical breach containment.
+- **Interactive Eval Scorecard & Mermaid Radar Visualizer (`agentvcr eval --demo` / `agentvcr eval -judge`)**: Rich ANSI terminal scorecard tracking overall grades (`PASS`, `WARNING`, `FAIL`, `CRITICAL_BREACH`), dimension averages, and Mermaid evaluation DAG topologies.
 - **Adversarial Model Context Protocol (MCP) Schema Fuzzer & Mutation Engine (`pkg/mcp/fuzzer.go`)**: Automated adversarial fuzz testing harness generating dynamic perturbations against tool input schemas across 8 attack vectors (type confusion, boundary values, Unicode/BIDI overrides, 16KB buffer overflows, OWASP prompt injection, null-byte path traversal, recursive nesting, and missing mandatory fields).
 - **Interactive MCP Fuzz CLI & Terminal Scorecard (`agentvcr mcp -action fuzz`)**: ANSI scorecard visualizing tool resilience ratings, blocked exploits, server crash containment, and Mermaid attack surface flowcharts.
 - **Agent-to-Agent (A2A) Protocol Transport, Card Discovery & Delegation Bus (`pkg/a2a`)**: Decentralized inter-agent wire protocol enabling secure agent card discovery, task delegation contracts, cryptographic Ed25519 payload signing, and flight-recorded message bus routing.
