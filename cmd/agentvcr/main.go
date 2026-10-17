@@ -57,6 +57,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/trace"
 	"github.com/Noooblien/agentvcr/pkg/tui"
 	"github.com/Noooblien/agentvcr/pkg/vision"
+	"github.com/Noooblien/agentvcr/pkg/voice"
 	"github.com/Noooblien/agentvcr/pkg/wasi"
 	"github.com/Noooblien/agentvcr/pkg/zkp"
 )
@@ -2224,6 +2225,77 @@ func main() {
 			log.Fatal(server.Serve(os.Stdin, os.Stdout))
 		}
 
+	case "voice":
+		voiceCmd := flag.NewFlagSet("voice", flag.ExitOnError)
+		mode := voiceCmd.String("mode", "demo", "Voice recording mode: 'demo', 'record', or 'wav'")
+		demo := voiceCmd.Bool("demo", false, "Run interactive acoustic flight recorder demonstration")
+		sessionID := voiceCmd.String("id", "", "Voice session ID")
+		maxTurnaround := voiceCmd.Int64("max-turnaround-ms", 800, "Maximum permissible turn turnaround latency SLA in ms")
+		maxInterruption := voiceCmd.Int64("max-interruption-ms", 350, "Maximum permissible barge-in interruption cutoff latency SLA in ms")
+		outWAV := voiceCmd.String("out", "", "Export raw audio recording to 16-bit PCM WAV file")
+		strict := voiceCmd.Bool("strict", false, "Exit with non-zero exit code if voice SLA or latency bounds are breached")
+		_ = voiceCmd.Parse(os.Args[2:])
+
+		cfg := voice.DefaultVoiceSessionConfig()
+		cfg.MaxTurnaroundLatencyMs = *maxTurnaround
+		cfg.MaxInterruptionLatencyMs = *maxInterruption
+
+		sid := *sessionID
+		if sid == "" {
+			sid = fmt.Sprintf("voice_session_%d", time.Now().Unix())
+		}
+
+		rec := voice.NewVoiceRecorder(sid, cfg)
+
+		// Run realistic demonstration if mode is demo or default
+		if *mode == "demo" || *mode == "" || *demo {
+			userTone := voice.SynthesizeSineWavePCM(cfg.SampleRate, 440.0, 100, 0.45)
+			agentTone := voice.SynthesizeSineWavePCM(cfg.SampleRate, 659.25, 100, 0.50)
+			silence := make([]byte, len(userTone))
+
+			// Turn 1: User asks question (1000ms - 1300ms)
+			rec.IngestPCMChunk(voice.TrackUserInbound, 1000, userTone)
+			rec.IngestTranscript(voice.TrackUserInbound, "AgentVCR, check deploy status for cluster-east.")
+			rec.IngestPCMChunk(voice.TrackUserInbound, 1100, userTone)
+			rec.IngestPCMChunk(voice.TrackUserInbound, 1200, userTone)
+			rec.IngestPCMChunk(voice.TrackUserInbound, 1300, silence)
+			rec.IngestPCMChunk(voice.TrackUserInbound, 1700, silence)
+
+			// Agent executes tool and replies at 1820ms (Turnaround = 520ms)
+			rec.IngestToolCall("k8s_cluster_health")
+			rec.IngestPCMChunk(voice.TrackAgentOutbound, 1820, agentTone)
+			rec.IngestTranscript(voice.TrackAgentOutbound, "All 12 pods in cluster-east are healthy and operating normally.")
+			rec.IngestPCMChunk(voice.TrackAgentOutbound, 1920, agentTone)
+			rec.IngestPCMChunk(voice.TrackAgentOutbound, 2020, agentTone)
+			rec.IngestPCMChunk(voice.TrackAgentOutbound, 2120, silence)
+			rec.IngestPCMChunk(voice.TrackAgentOutbound, 2600, silence)
+
+			// Turn 2: User barges in / interrupts while agent speaks at 3200ms
+			rec.IngestPCMChunk(voice.TrackAgentOutbound, 3000, agentTone)
+			rec.IngestPCMChunk(voice.TrackAgentOutbound, 3100, agentTone)
+			rec.IngestPCMChunk(voice.TrackUserInbound, 3150, userTone) // User onset!
+			rec.IngestTranscript(voice.TrackUserInbound, "Wait, what about the memory usage?")
+			rec.IngestPCMChunk(voice.TrackUserInbound, 3250, userTone)
+			rec.IngestPCMChunk(voice.TrackUserInbound, 3350, silence)
+			rec.IngestPCMChunk(voice.TrackUserInbound, 3750, silence)
+
+			report := rec.FinalizeSession()
+			fmt.Print(voice.RenderVoiceScorecard(report))
+
+			if *outWAV != "" {
+				audioData := voice.SynthesizeSineWavePCM(cfg.SampleRate, 523.25, 1000, 0.4)
+				header := voice.GenerateWAVHeader(cfg.SampleRate, cfg.BitDepth, cfg.Channels, len(audioData))
+				wavBytes := append(header, audioData...)
+				_ = os.WriteFile(*outWAV, wavBytes, 0644)
+				fmt.Printf("📦 [AgentVCR] Exported synchronized WAV recording to: %s\n\n", *outWAV)
+			}
+
+			if *strict && !report.SLAPassed {
+				os.Exit(1)
+			}
+			return
+		}
+
 	default:
 		printHelp()
 	}
@@ -2279,6 +2351,7 @@ func printHelp() {
 	fmt.Println("  bench-perf  Sub-millisecond latency profiling, micro-benchmarks & concurrency stress")
 	fmt.Println("  research    Autonomous recursive multi-agent research engine & citation tree")
 	fmt.Println("  lsp         Language Server Protocol (LSP 3.17) daemon & Fast-Tab editor engine")
+	fmt.Println("  voice       Real-Time Voice API flight recorder & acoustic waveform synchronizer")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -2329,4 +2402,5 @@ func printHelp() {
 	fmt.Println("  agentvcr research -query 'concurrency bottlenecks' -depth 3 -strict")
 	fmt.Println("  agentvcr lsp --demo")
 	fmt.Println("  agentvcr lsp --stdio")
+	fmt.Println("  agentvcr voice --demo -strict")
 }

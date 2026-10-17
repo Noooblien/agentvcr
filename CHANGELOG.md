@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Real-Time Voice API Flight Recorder & Acoustic Waveform Synchronizer (`pkg/voice`)**: Real-time dual-track flight recorder capturing bidirectional WebSocket/WebRTC audio streams for OpenAI Realtime and Gemini Live Voice APIs with microsecond timestamp synchronization.
+- **Audio Energy & Decibel Telemetry**: 16-bit PCM Linear LE RMS calculation, decibel sound pressure level ($dB_{FS}$) tracking, and 8-level Unicode acoustic amplitude waveform rendering (` ▂▃▄▅▆▇█`).
+- **Energy-Based Voice Activity Detection (VAD)**: Multi-packet speech boundary segmentation detecting user/agent voice onsets and trailing speech pauses with configurable decibel thresholds.
+- **Turnaround Latency & Interruption Barge-In SLA Auditor**: Sub-millisecond tracking of user-to-agent turnaround latency (<800ms) and user barge-in interruption cutoff latency (<350ms) with P99 jitter analytics.
+- **RIFF/WAVE 44-Byte Audio Synthesis & Terminal Scorecard (`agentvcr voice`)**: Automatic zero-dependency WAV header generation for exporting synchronized audio tracks, paired with an interactive ANSI multi-track timeline scorecard.
 - **In-Browser Console Log Loopback & Hot-Patch Engine (`pkg/heal`)**: Reverse-engineered Lovable/Bolt.new-style autonomous self-healing runtime intercepting browser console errors (`ReferenceError`, `TypeError`, React hydration failures) and bundler HMR diagnostics (Vite/Next.js/Webpack).
 - **Zero-Error Convergence Loop (`agentvcr heal -loopback`)**: Multi-round automated diagnostic extraction, stack frame file/line parsing, and hot-patch code synthesizer that iteratively patches code files until 0 browser errors remain.
 - **Language Server Protocol (LSP 3.17) Daemon & Fast-Tab Engine (`pkg/lsp`)**: Native JSON-RPC 2.0 language server daemon operating over stdio and TCP sockets for direct Neovim, VSCode, and Zed editor integration.
