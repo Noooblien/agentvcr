@@ -135,6 +135,7 @@ client = OpenAI(
 - [x] Virtual Terminal PTY flight recorder, VT100 screen grid emulator & Asciinema v2 exporter (`pty`)
 - [x] Deterministic container sandbox execution hypervisor, CoW overlay rollback & escape guardrails (`sandbox`)
 - [x] Distributed agent actor mesh, supervision trees & fault-tolerant mailboxes (`actor`)
+- [x] Model Gateway, circuit breaker, semantic routing & cache failover (`gateway`)
 
 ---
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
@@ -31,6 +32,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
+	"github.com/Noooblien/agentvcr/pkg/gateway"
 	"github.com/Noooblien/agentvcr/pkg/gossip"
 	"github.com/Noooblien/agentvcr/pkg/graph"
 	"github.com/Noooblien/agentvcr/pkg/heal"
@@ -2870,6 +2872,163 @@ func main() {
 		_ = demo
 		return
 
+	case "gateway":
+		gwCmd := flag.NewFlagSet("gateway", flag.ExitOnError)
+		demo := gwCmd.Bool("demo", false, "Run Model Gateway, circuit breaker, and semantic routing demonstration")
+		mermaid := gwCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of gateway routing topology")
+		strict := gwCmd.Bool("strict", false, "Exit with non-zero exit code if unhandled gateway error or exhausted cascade occurs")
+		_ = gwCmd.Parse(os.Args[2:])
+
+		gw := gateway.NewGatewayEngine("agentvcr-swarm-gateway")
+
+		// 1. Register Providers
+		gw.RegisterProvider(&gateway.ProviderConfig{
+			ID:       "openai-primary",
+			Name:     "OpenAI Platform",
+			Protocol: gateway.ProtocolOpenAI,
+			Endpoint: "https://api.openai.com/v1/chat/completions",
+			Models: map[gateway.ModelTier]string{
+				gateway.TierFast:      "gpt-4o-mini",
+				gateway.TierStandard:  "gpt-4o",
+				gateway.TierReasoning: "o1-preview",
+			},
+			CostPerInput1kUSD:  0.005,
+			CostPerOutput1kUSD: 0.015,
+			Timeout:            5 * time.Second,
+			CircuitConfig: gateway.CircuitBreakerConfig{
+				FailureThreshold: 2,
+				CooldownDuration: 200 * time.Millisecond,
+			},
+		})
+
+		gw.RegisterProvider(&gateway.ProviderConfig{
+			ID:       "anthropic-backup",
+			Name:     "Anthropic Claude API",
+			Protocol: gateway.ProtocolAnthropic,
+			Endpoint: "https://api.anthropic.com/v1/messages",
+			Models: map[gateway.ModelTier]string{
+				gateway.TierFast:      "claude-3-5-haiku",
+				gateway.TierStandard:  "claude-3-7-sonnet",
+				gateway.TierReasoning: "claude-3-opus",
+			},
+			CostPerInput1kUSD:  0.003,
+			CostPerOutput1kUSD: 0.015,
+			Timeout:            5 * time.Second,
+			CircuitConfig: gateway.CircuitBreakerConfig{
+				FailureThreshold: 3,
+				CooldownDuration: 200 * time.Millisecond,
+			},
+		})
+
+		gw.RegisterProvider(&gateway.ProviderConfig{
+			ID:       "gemini-fallback",
+			Name:     "Google Gemini API",
+			Protocol: gateway.ProtocolGemini,
+			Endpoint: "https://generativelanguage.googleapis.com/v1beta/models",
+			Models: map[gateway.ModelTier]string{
+				gateway.TierFast:      "gemini-2.0-flash",
+				gateway.TierStandard:  "gemini-1.5-pro",
+				gateway.TierReasoning: "gemini-1.5-pro",
+			},
+			CostPerInput1kUSD:  0.001,
+			CostPerOutput1kUSD: 0.005,
+			Timeout:            5 * time.Second,
+			CircuitConfig: gateway.CircuitBreakerConfig{
+				FailureThreshold: 3,
+				CooldownDuration: 200 * time.Millisecond,
+			},
+		})
+
+		// Configure explicit cascade: Primary OpenAI -> Backup Anthropic -> Fallback Gemini
+		gw.Router().SetCascade(gateway.TierFast, []string{"openai-primary", "anthropic-backup", "gemini-fallback"})
+		gw.Router().SetCascade(gateway.TierStandard, []string{"openai-primary", "anthropic-backup", "gemini-fallback"})
+		gw.Router().SetCascade(gateway.TierReasoning, []string{"openai-primary", "anthropic-backup", "gemini-fallback"})
+
+		// Configure mock dispatcher for deterministic offline execution
+		openaiFailCount := 0
+		gw.SetDispatcher(func(ctx context.Context, p *gateway.ProviderConfig, targetModel string, payload []byte) ([]byte, int, error) {
+			if p.ID == "openai-primary" && strings.Contains(string(payload), "simulate_rate_limit") {
+				openaiFailCount++
+				return []byte(`{"error": {"message": "Rate limit exceeded: 429 Too Many Requests"}}`), 429, fmt.Errorf("HTTP 429: Too Many Requests")
+			}
+
+			// Generate valid mock response by protocol
+			switch p.Protocol {
+			case gateway.ProtocolAnthropic:
+				return []byte(fmt.Sprintf(`{
+					"id": "msg_mock_anthropic",
+					"content": [{"type": "text", "text": "Synthesized response from %s (%s)"}],
+					"usage": {"input_tokens": 120, "output_tokens": 80}
+				}`, p.ID, targetModel)), 200, nil
+
+			case gateway.ProtocolGemini:
+				return []byte(fmt.Sprintf(`{
+					"candidates": [{"content": {"parts": [{"text": "Synthesized response from %s (%s)"}]}}],
+					"usageMetadata": {"promptTokenCount": 110, "candidatesTokenCount": 75, "totalTokenCount": 185}
+				}`, p.ID, targetModel)), 200, nil
+
+			default:
+				return []byte(fmt.Sprintf(`{
+					"id": "chatcmpl_mock_openai",
+					"choices": [{"index": 0, "message": {"role": "assistant", "content": "Synthesized response from %s (%s)"}, "finish_reason": "stop"}],
+					"usage": {"prompt_tokens": 130, "completion_tokens": 85, "total_tokens": 215}
+				}`, p.ID, targetModel)), 200, nil
+			}
+		})
+
+		ctx := context.Background()
+
+		// Request 1: Standard query -> routes to primary provider (OpenAI gpt-4o)
+		_, _ = gw.Handle(ctx, &gateway.GatewayRequest{
+			ID: "req-1",
+			Messages: []gateway.ChatMessage{
+				{Role: "user", Content: "Write an optimized Go concurrent worker pool with bounded channel."},
+			},
+			Temperature: 0.2,
+		})
+
+		// Request 2: Idempotent repeat -> Hits semantic replay cache (0ms, $0)
+		_, _ = gw.Handle(ctx, &gateway.GatewayRequest{
+			ID: "req-2",
+			Messages: []gateway.ChatMessage{
+				{Role: "user", Content: "Write an optimized Go concurrent worker pool with bounded channel."},
+			},
+			Temperature: 0.2,
+		})
+
+		// Request 3: Deep mathematical proof -> Semantic router classifies as TierReasoning -> routes to o1-preview
+		_, _ = gw.Handle(ctx, &gateway.GatewayRequest{
+			ID: "req-3",
+			Messages: []gateway.ChatMessage{
+				{Role: "user", Content: "Provide a formal mathematical proof that Byzantine consensus requires 3f + 1 nodes."},
+			},
+			Temperature: 0.1,
+		})
+
+		// Request 4: Primary provider failure -> Triggers circuit breaker and seamless fallback cascade to Anthropic Claude 3.7
+		_, errCascade := gw.Handle(ctx, &gateway.GatewayRequest{
+			ID: "req-4",
+			Messages: []gateway.ChatMessage{
+				{Role: "user", Content: "Generate secure token signer [simulate_rate_limit]."},
+			},
+			Temperature: 0.2,
+		})
+
+		report := gw.GenerateReport()
+
+		if *mermaid {
+			fmt.Println(gateway.RenderGatewayMermaid(report))
+			return
+		}
+
+		fmt.Print(gateway.RenderGatewayScorecard(report))
+
+		if *strict && errCascade != nil {
+			log.Fatalf("Gateway failure cascade exhausted: %v", errCascade)
+		}
+		_ = demo
+		return
+
 	default:
 		printHelp()
 	}
@@ -2931,6 +3090,7 @@ func printHelp() {
 	fmt.Println("  cdc         Database Change Data Capture (CDC) transaction journal & semantic rollback")
 	fmt.Println("  sandbox     Deterministic container sandbox execution hypervisor & CoW overlay rollback")
 	fmt.Println("  actor       Distributed agent actor mesh, supervision trees & fault-tolerant mailboxes")
+	fmt.Println("  gateway     Model Gateway, circuit breaker, semantic routing & cache failover")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -2985,4 +3145,6 @@ func printHelp() {
 	fmt.Println("  agentvcr cdp --demo -strict")
 	fmt.Println("  agentvcr graph --demo -strict")
 	fmt.Println("  agentvcr cdc --demo -strict")
+	fmt.Println("  agentvcr actor --demo -strict")
+	fmt.Println("  agentvcr gateway --demo -strict")
 }
