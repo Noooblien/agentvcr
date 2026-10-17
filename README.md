@@ -127,6 +127,7 @@ client = OpenAI(
 - [x] Recursive multi-agent research tree, SHA-256 citation grounding & hallucination pruner (`research`)
 - [x] Language Server Protocol (LSP 3.17) daemon, stdio/TCP streaming & Fast-Tab editor RPC (`lsp`)
 - [x] In-browser console log loopback runtime & Lovable/Bolt.new zero-error hot-patcher (`heal -loopback`)
+- [x] Real-time Voice API flight recorder, acoustic waveform visualizer & interruption synchronizer (`voice`)
 
 ---
 
