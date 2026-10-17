@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Deterministic Container Sandbox Execution Hypervisor & CoW Overlay Rollback (`pkg/sandbox`)**: Isolated execution container hypervisor managing cgroup quotas (CPU time limit, RSS memory ceiling, max PIDs, max disk writes), network egress policies (AllowList/DenyList), and command flight recording for autonomous coding agents.
+- **Copy-on-Write (CoW) Overlay Filesystem**: Multi-layered in-memory ephemeral filesystem supporting baseline read-only images, upper write deltas, file whiteouts/tombstones, and microsecond $O(1)$ checkpoint rollback without disk churn.
+- **Autonomous Jailbreak & Escape Guardrails**: Real-time pre-execution pattern detection intercepting Cloud Metadata SSRF (`169.254.169.254`), privileged kernel escapes (`/proc/kcore`, `/sys/kernel`, `nsenter`), credential theft (`.ssh/id_rsa`, `/etc/shadow`), fork-bombs, and destructive wipes (`rm -rf /`).
+- **Interactive Sandbox CLI & Terminal Scorecard (`agentvcr sandbox`)**: Rich ANSI terminal scorecard visualizing container status, resource telemetry, execution timeline, CoW file mutations, and security SLA compliance.
 - **Database Transaction Flight Recorder & Semantic CDC Rollback Engine (`pkg/cdc`)**: Real-time transaction wire-protocol and change-data-capture journal for PostgreSQL, SQLite, DuckDB, and Chroma vector databases.
 - **Automated Inverse Compensating SQL Synthesis**: Reconstructs exact inverse SQL mutations (`DELETE` for un-insert, `INSERT` with preserved 'Before' state for un-delete, `UPDATE` restoring previous column values with SQL escaping) for atomic compensation without restoring full database backups.
 - **Dangerous Statement & Unbounded Query Safety Guards**: Pre-execution regex detection flagging dangerous agent hallucinations including unbounded `DELETE`/`UPDATE` without `WHERE` clauses and destructive DDL drops (`DROP TABLE`, `DROP DATABASE`, `TRUNCATE`).
