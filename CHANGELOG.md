@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Database Transaction Flight Recorder & Semantic CDC Rollback Engine (`pkg/cdc`)**: Real-time transaction wire-protocol and change-data-capture journal for PostgreSQL, SQLite, DuckDB, and Chroma vector databases.
+- **Automated Inverse Compensating SQL Synthesis**: Reconstructs exact inverse SQL mutations (`DELETE` for un-insert, `INSERT` with preserved 'Before' state for un-delete, `UPDATE` restoring previous column values with SQL escaping) for atomic compensation without restoring full database backups.
+- **Dangerous Statement & Unbounded Query Safety Guards**: Pre-execution regex detection flagging dangerous agent hallucinations including unbounded `DELETE`/`UPDATE` without `WHERE` clauses and destructive DDL drops (`DROP TABLE`, `DROP DATABASE`, `TRUNCATE`).
+- **Vector Store Transaction Journaling**: Tracks high-dimensional vector embeddings, dimensional consistency, collection upserts, and poisoned embedding mutations.
+- **Time-Travel Step Rollback & Terminal Scorecard (`agentvcr cdc`)**: Synthesizes reverse-chronological transaction rollback scripts starting from any trajectory step index (`-rollback-step <n>`) with ANSI scorecard visualization.
 - **StateGraph Workflow Engine & Checkpoint Time-Travel Debugger (`pkg/graph`)**: Native LangGraph/StateGraph cyclic multi-agent graph runtime featuring typed state channels, custom state reducers (`ReducerAppendList`, `ReducerMergeMap`, `ReducerOverwrite`), conditional edge routers, and cycle loop detection.
 - **Microsecond Checkpoint Journal & State Rewind**: Immutable step-by-step checkpoint snapshots allowing backward time-travel, thread state branching, and retroactive state injection resumes.
 - **Human-in-the-Loop Interrupt Gates (`InterruptBefore`, `InterruptAfter`)**: Configurable pause gates halting execution before or after sensitive nodes (e.g. production deployers) for human approval or parameter mutation.

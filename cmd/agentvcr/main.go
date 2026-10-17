@@ -17,6 +17,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/byzantine"
 	"github.com/Noooblien/agentvcr/pkg/canary"
 	"github.com/Noooblien/agentvcr/pkg/causal"
+	"github.com/Noooblien/agentvcr/pkg/cdc"
 	"github.com/Noooblien/agentvcr/pkg/cdp"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/compact"
@@ -2631,6 +2632,106 @@ func main() {
 		return
 		_ = demo
 
+	case "cdc":
+		cdcCmd := flag.NewFlagSet("cdc", flag.ExitOnError)
+		demo := cdcCmd.Bool("demo", false, "Run database CDC transaction flight recorder demonstration")
+		sessionID := cdcCmd.String("id", "", "Database CDC session ID")
+		rollbackStep := cdcCmd.Int("rollback-step", 1, "Synthesize atomic SQL rollback script starting from step index")
+		outSQL := cdcCmd.String("out", "", "Output path for the generated inverse SQL rollback script")
+		strict := cdcCmd.Bool("strict", false, "Exit with non-zero exit code if dangerous queries or safety violations detected")
+		_ = cdcCmd.Parse(os.Args[2:])
+
+		sid := *sessionID
+		if sid == "" {
+			sid = fmt.Sprintf("cdc_session_%d", time.Now().Unix())
+		}
+
+		rec := cdc.NewCDCRecorder(sid)
+
+		if *demo || sid != "" {
+			// Step 1: Agent creates table and inserts system config
+			rec.BeginTransaction("tx-001", "postgres", "production_app", 1)
+			_ = rec.RecordStatement("tx-001", "CREATE TABLE settings (key VARCHAR(64) PRIMARY KEY, val TEXT);")
+			_ = rec.RecordStatement("tx-001", "INSERT INTO settings (key, val) VALUES ('maintenance_mode', 'false');")
+			_ = rec.RecordRowDelta("tx-001", &cdc.RowDelta{
+				Table:           "settings",
+				PrimaryKeyCol:   "key",
+				PrimaryKeyValue: "maintenance_mode",
+				Operation:       cdc.OpInsert,
+				After:           map[string]interface{}{"key": "maintenance_mode", "val": "false"},
+			})
+			_ = rec.CommitTransaction("tx-001")
+
+			// Step 2: Agent inserts user and records row delta
+			rec.BeginTransaction("tx-002", "postgres", "production_app", 2)
+			_ = rec.RecordStatement("tx-002", "INSERT INTO users (id, email, tier) VALUES (401, 'agent.ops@company.io', 'enterprise');")
+			_ = rec.RecordRowDelta("tx-002", &cdc.RowDelta{
+				Table:           "users",
+				PrimaryKeyCol:   "id",
+				PrimaryKeyValue: 401,
+				Operation:       cdc.OpInsert,
+				After:           map[string]interface{}{"id": 401, "email": "agent.ops@company.io", "tier": "enterprise"},
+			})
+			_ = rec.CommitTransaction("tx-002")
+
+			// Step 3: Agent executes dangerous query (unbounded UPDATE without WHERE!)
+			rec.BeginTransaction("tx-003", "postgres", "production_app", 3)
+			_ = rec.RecordStatement("tx-003", "UPDATE accounts SET balance = 0;") // Dangerous hallucination
+			_ = rec.RecordRowDelta("tx-003", &cdc.RowDelta{
+				Table:           "accounts",
+				PrimaryKeyCol:   "account_id",
+				PrimaryKeyValue: "ACC-8821",
+				Operation:       cdc.OpUpdate,
+				Before:          map[string]interface{}{"account_id": "ACC-8821", "balance": 150000},
+				After:           map[string]interface{}{"account_id": "ACC-8821", "balance": 0},
+			})
+			_ = rec.CommitTransaction("tx-003")
+
+			// Step 4: Agent updates customer tier with proper WHERE
+			rec.BeginTransaction("tx-004", "postgres", "production_app", 4)
+			_ = rec.RecordStatement("tx-004", "UPDATE users SET tier = 'platinum' WHERE id = 401;")
+			_ = rec.RecordRowDelta("tx-004", &cdc.RowDelta{
+				Table:           "users",
+				PrimaryKeyCol:   "id",
+				PrimaryKeyValue: 401,
+				Operation:       cdc.OpUpdate,
+				Before:          map[string]interface{}{"id": 401, "email": "agent.ops@company.io", "tier": "enterprise"},
+				After:           map[string]interface{}{"id": 401, "email": "agent.ops@company.io", "tier": "platinum"},
+			})
+			_ = rec.CommitTransaction("tx-004")
+
+			// Step 5: Vector store upsert in Chroma
+			rec.BeginTransaction("tx-005", "chroma", "vector_catalog", 5)
+			_ = rec.RecordVectorDelta("tx-005", &cdc.VectorDelta{
+				Collection:     "api_embeddings",
+				VectorID:       "doc_chunk_841",
+				Dimensions:     1536,
+				Operation:      cdc.OpVectorUpsert,
+				EmbeddingAfter: []float32{0.012, -0.045, 0.098},
+				MetadataAfter:  map[string]interface{}{"file": "billing_spec.go"},
+			})
+			_ = rec.CommitTransaction("tx-005")
+
+			summary := rec.FinalizeAudit(*strict)
+			fmt.Print(cdc.RenderCDCScorecard(summary))
+
+			if *rollbackStep > 0 {
+				rollbackScript, err := rec.SynthesizeRollbackScript(*rollbackStep)
+				if err != nil {
+					log.Fatalf("Failed to synthesize rollback script: %v", err)
+				}
+				if *outSQL != "" {
+					_ = os.WriteFile(*outSQL, []byte(rollbackScript), 0644)
+					fmt.Printf("📦 [AgentVCR] Exported atomic compensating rollback script to: %s\n\n", *outSQL)
+				}
+			}
+
+			if *strict && !summary.PassedAudit {
+				os.Exit(1)
+			}
+			return
+		}
+
 	default:
 		printHelp()
 	}
@@ -2689,6 +2790,7 @@ func printHelp() {
 	fmt.Println("  voice       Real-Time Voice API flight recorder & acoustic waveform synchronizer")
 	fmt.Println("  cdp         Chrome DevTools Protocol (CDP) flight recorder & DOM mutation journal")
 	fmt.Println("  graph       StateGraph cyclic multi-agent workflow engine & time-travel debugger")
+	fmt.Println("  cdc         Database Change Data Capture (CDC) transaction journal & semantic rollback")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -2742,4 +2844,5 @@ func printHelp() {
 	fmt.Println("  agentvcr voice --demo -strict")
 	fmt.Println("  agentvcr cdp --demo -strict")
 	fmt.Println("  agentvcr graph --demo -strict")
+	fmt.Println("  agentvcr cdc --demo -strict")
 }
