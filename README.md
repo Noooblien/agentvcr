@@ -139,6 +139,7 @@ client = OpenAI(
 - [x] Autonomous hierarchical memory consolidation & Ebbinghaus decay (`memory`)
 - [x] FinOps token budget circuit breaker, runaway spend protector & rate cards (`finops`)
 - [x] Session checkpoint hibernation, incremental delta compression & hot restoration (`checkpoint`)
+- [x] Interactive time-travel agent debugger, conditional breakpoints, invariant watchpoints & DAP (`debug`)
 
 ---
 
