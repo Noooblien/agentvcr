@@ -128,6 +128,7 @@ client = OpenAI(
 - [x] Language Server Protocol (LSP 3.17) daemon, stdio/TCP streaming & Fast-Tab editor RPC (`lsp`)
 - [x] In-browser console log loopback runtime & Lovable/Bolt.new zero-error hot-patcher (`heal -loopback`)
 - [x] Real-time Voice API flight recorder, acoustic waveform visualizer & interruption synchronizer (`voice`)
+- [x] Chrome DevTools Protocol (CDP) flight recorder, W3C HAR 1.2 exporter & virtual DOM journal (`cdp`)
 
 ---
 
