@@ -193,15 +193,128 @@ func main() {
 		maxTokens := evalCmd.Int("max-tokens", 0, "Max allowed token budget")
 		maxCost := evalCmd.Float64("max-cost", 0.0, "Max allowed USD cost")
 		noErrors := evalCmd.Bool("no-errors", false, "Assert zero tool execution errors")
+		judge := evalCmd.Bool("judge", false, "Run LLM-as-a-Judge multi-dimensional rubric evaluation")
+		demo := evalCmd.Bool("demo", false, "Run LLM-as-a-Judge demonstration with sample trajectory")
+		mermaid := evalCmd.Bool("mermaid", false, "Output Mermaid diagram markup of evaluation rubric DAG")
+		strict := evalCmd.Bool("strict", false, "Exit with non-zero exit code if judge evaluation fails or critical breaches detected")
 		_ = evalCmd.Parse(os.Args[2:])
 
+		if *demo {
+			now := time.Now()
+			sampleSession := &trace.Session{
+				ID:        "eval-demo-trajectory-1",
+				AgentName: "autonomous-infra-agent",
+				CreatedAt: now.Add(-10 * time.Minute),
+				Metadata: map[string]string{
+					"task": "Remediate high memory usage in production ingress",
+				},
+				Events: []trace.TraceEvent{
+					{
+						ID:        "evt-0",
+						Index:     0,
+						Timestamp: now.Add(-9 * time.Minute),
+						Type:      trace.EventLLMRequest,
+						Payload: map[string]interface{}{
+							"prompt": "Investigate memory footprint of ingress controller and safely tune buffer limits.",
+							"tokens": 350,
+						},
+					},
+					{
+						ID:        "evt-1",
+						Index:     1,
+						Timestamp: now.Add(-8 * time.Minute),
+						Type:      trace.EventToolCall,
+						Payload: map[string]interface{}{
+							"tool":    "k8s_describe_pod",
+							"command": "kubectl top pod -l app=ingress-controller",
+							"tokens":  120,
+						},
+					},
+					{
+						ID:        "evt-2",
+						Index:     2,
+						Timestamp: now.Add(-7 * time.Minute),
+						Type:      trace.EventToolResult,
+						Payload: map[string]interface{}{
+							"output": "ingress-controller-7d9f: Memory 1.8Gi / 2.0Gi (90% limit)",
+							"tokens": 80,
+						},
+					},
+					{
+						ID:        "evt-3",
+						Index:     3,
+						Timestamp: now.Add(-6 * time.Minute),
+						Type:      trace.EventToolCall,
+						Payload: map[string]interface{}{
+							"tool":    "helm_patch",
+							"command": "helm upgrade ingress-controller ./charts/ingress --set bufferSize=64k",
+							"tokens":  210,
+						},
+					},
+					{
+						ID:        "evt-4",
+						Index:     4,
+						Timestamp: now.Add(-5 * time.Minute),
+						Type:      trace.EventToolResult,
+						Payload: map[string]interface{}{
+							"status": "Release 'ingress-controller' has been upgraded successfully.",
+							"tokens": 45,
+						},
+					},
+					{
+						ID:        "evt-5",
+						Index:     5,
+						Timestamp: now.Add(-4 * time.Minute),
+						Type:      trace.EventLLMResponse,
+						Payload: map[string]interface{}{
+							"content": "Optimization complete: bufferSize lowered to 64k. Memory usage stabilized at 820Mi. Task verified and passed successfully.",
+							"tokens":  160,
+						},
+					},
+				},
+			}
+
+			judgeEngine := eval.NewLLMJudgeEngine(nil)
+			report := judgeEngine.EvaluateSession(sampleSession)
+
+			if *mermaid {
+				fmt.Println(eval.RenderJudgeMermaid(report))
+				return
+			}
+
+			fmt.Print(eval.RenderJudgeScorecard(report))
+
+			if *strict && (!report.Passed || report.OverallGrade == eval.GradeCriticalBreach) {
+				log.Fatalf("LLM Judge rubric evaluation failed strict check: Grade=%s, Score=%.2f",
+					report.OverallGrade, report.WeightedScore)
+			}
+			return
+		}
+
 		if *sessionID == "" {
-			log.Fatal("Usage: agentvcr eval -id <session_id> [-rules suite.json] [-max-tokens 5000] [-max-cost 0.05] [-no-errors]")
+			log.Fatal("Usage: agentvcr eval -id <session_id> [-judge] [-rules suite.json] [-max-tokens 5000] [-max-cost 0.05] [-no-errors] OR agentvcr eval --demo [--mermaid] [--strict]")
 		}
 
 		session, err := store.LoadSession(*sessionID)
 		if err != nil {
 			log.Fatalf("Error loading session: %v", err)
+		}
+
+		if *judge {
+			judgeEngine := eval.NewLLMJudgeEngine(nil)
+			report := judgeEngine.EvaluateSession(session)
+
+			if *mermaid {
+				fmt.Println(eval.RenderJudgeMermaid(report))
+				return
+			}
+
+			fmt.Print(eval.RenderJudgeScorecard(report))
+
+			if *strict && (!report.Passed || report.OverallGrade == eval.GradeCriticalBreach) {
+				log.Fatalf("LLM Judge evaluation failed strict threshold: %s", report.OverallGrade)
+			}
+			return
 		}
 
 		var rules []eval.AssertionRule
@@ -3814,6 +3927,8 @@ func printHelp() {
 	fmt.Println("  agentvcr fork -id trace_1760800000 -step 4")
 	fmt.Println("  agentvcr diff -base trace_1 -target trace_1_fork")
 	fmt.Println("  agentvcr eval -id trace_1 -no-errors -max-tokens 5000")
+	fmt.Println("  agentvcr eval --demo -strict")
+	fmt.Println("  agentvcr eval -id trace_1 -judge -strict")
 	fmt.Println("  agentvcr play -id trace_1 -delay 100")
 	fmt.Println("  agentvcr snapshot -dir ./workspace -step 3")
 	fmt.Println("  agentvcr cluster")
