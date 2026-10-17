@@ -21,6 +21,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/causal"
 	"github.com/Noooblien/agentvcr/pkg/cdc"
 	"github.com/Noooblien/agentvcr/pkg/cdp"
+	"github.com/Noooblien/agentvcr/pkg/checkpoint"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/compact"
 	"github.com/Noooblien/agentvcr/pkg/consensus"
@@ -3227,6 +3228,99 @@ func main() {
 		_ = demo
 		return
 
+	case "checkpoint":
+		ckptCmd := flag.NewFlagSet("checkpoint", flag.ExitOnError)
+		demo := ckptCmd.Bool("demo", false, "Run session checkpoint hibernation and restoration demonstration")
+		mermaid := ckptCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of checkpoint architecture")
+		strict := ckptCmd.Bool("strict", false, "Exit with non-zero exit code if integrity verification fails or restoration errors occur")
+		_ = ckptCmd.Parse(os.Args[2:])
+
+		cfg := checkpoint.DefaultHibernationConfig("./.vcr_checkpoints_demo")
+		manager, err := checkpoint.NewCheckpointManager("agentvcr-swarm-checkpoint", cfg)
+		if err != nil {
+			log.Fatalf("Failed to initialize checkpoint manager: %v", err)
+		}
+
+		now := time.Now()
+
+		// 1. Create Base Checkpoint Image at Step 10
+		baseImage := &checkpoint.SessionImage{
+			ImageID:   "ckpt-sess-001-step-10",
+			SessionID: "sess-001",
+			AgentID:   "autonomous-engineer",
+			StepIndex: 10,
+			CreatedAt: now.Add(-10 * time.Minute),
+			ContextFrames: []checkpoint.AgentContextFrame{
+				{Role: "system", Content: "You are lead systems architect."},
+				{Role: "user", Content: "Build distributed fault-tolerant Raft consensus engine."},
+				{Role: "assistant", Action: "Scaffolded raft package and vote state machine."},
+			},
+			WorkingMemory: map[string]interface{}{
+				"consensus_type": "raft",
+				"cluster_size":   5,
+				"quorum":         3,
+			},
+			PRNGSeed: 133742,
+		}
+
+		if err := manager.Hibernate(baseImage); err != nil {
+			log.Fatalf("Failed to hibernate base checkpoint: %v", err)
+		}
+
+		// 2. Create Incremental Delta Checkpoint at Step 15
+		step15Image := &checkpoint.SessionImage{
+			ImageID:   "ckpt-sess-001-step-15",
+			SessionID: "sess-001",
+			AgentID:   "autonomous-engineer",
+			StepIndex: 15,
+			CreatedAt: now.Add(-5 * time.Minute),
+			ContextFrames: []checkpoint.AgentContextFrame{
+				{Role: "system", Content: "You are lead systems architect."},
+				{Role: "user", Content: "Build distributed fault-tolerant Raft consensus engine."},
+				{Role: "assistant", Action: "Scaffolded raft package and vote state machine."},
+				{Role: "tool", Action: "go test -v ./pkg/raft", Content: "PASS: TestElectionTimeout"},
+				{Role: "assistant", Action: "Verified heartbeat mechanism under network partition."},
+			},
+			WorkingMemory: map[string]interface{}{
+				"consensus_type":  "raft",
+				"cluster_size":    5,
+				"quorum":          3,
+				"leader_id":       "node-2",
+				"current_term":    4,
+				"heartbeat_ms":    50,
+			},
+			ToolCursors: []checkpoint.ToolCursorState{
+				{ToolName: "raft_partition_simulator", InvocationID: "inv-99", ProgressPercent: 100.0},
+			},
+			PRNGSeed: 133743,
+		}
+
+		if err := manager.Hibernate(step15Image); err != nil {
+			log.Fatalf("Failed to hibernate delta checkpoint: %v", err)
+		}
+
+		// 3. Restore and Thaw Step 15 Checkpoint from Disk
+		restored, errRestore := manager.Restore("ckpt-sess-001-step-15")
+		if errRestore != nil {
+			log.Fatalf("Failed to restore checkpoint image: %v", errRestore)
+		}
+		_ = restored
+
+		report := manager.Audit()
+
+		if *mermaid {
+			fmt.Println(checkpoint.RenderCheckpointMermaid(report))
+			return
+		}
+
+		fmt.Print(checkpoint.RenderCheckpointScorecard(report))
+
+		if *strict && (!report.IntegrityVerified || errRestore != nil) {
+			log.Fatalf("Checkpoint integrity check failed or restore error")
+		}
+		_ = demo
+		return
+
 	default:
 		printHelp()
 	}
@@ -3291,6 +3385,7 @@ func printHelp() {
 	fmt.Println("  gateway     Model Gateway, circuit breaker, semantic routing & cache failover")
 	fmt.Println("  memory      Autonomous hierarchical memory consolidation & Ebbinghaus decay")
 	fmt.Println("  finops      Token budget circuit breaker, runaway spend protector & rate cards")
+	fmt.Println("  checkpoint  Session checkpoint hibernation, delta compression & hot restoration")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -3349,4 +3444,5 @@ func printHelp() {
 	fmt.Println("  agentvcr gateway --demo -strict")
 	fmt.Println("  agentvcr memory --demo -strict")
 	fmt.Println("  agentvcr finops --demo -strict")
+	fmt.Println("  agentvcr checkpoint --demo -strict")
 }
