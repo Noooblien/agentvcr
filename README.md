@@ -133,6 +133,7 @@ client = OpenAI(
 - [x] Database transaction flight recorder, semantic CDC rollback & vector state journal (`cdc`)
 - [x] Deterministic virtual time machine, monotonic tick hypervisor & synthetic PRNG seed injector (`vclock`)
 - [x] Virtual Terminal PTY flight recorder, VT100 screen grid emulator & Asciinema v2 exporter (`pty`)
+- [x] Deterministic container sandbox execution hypervisor, CoW overlay rollback & escape guardrails (`sandbox`)
 
 ---
 

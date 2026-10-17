@@ -47,6 +47,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/redteam"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/research"
+	"github.com/Noooblien/agentvcr/pkg/sandbox"
 	"github.com/Noooblien/agentvcr/pkg/sim"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
 	"github.com/Noooblien/agentvcr/pkg/speculate"
@@ -2732,6 +2733,49 @@ func main() {
 			return
 		}
 
+	case "sandbox":
+		sandboxCmd := flag.NewFlagSet("sandbox", flag.ExitOnError)
+		demo := sandboxCmd.Bool("demo", false, "Run isolated sandbox agent execution demonstration")
+		strict := sandboxCmd.Bool("strict", false, "Exit with non-zero exit code if escape risk or security violations detected")
+		_ = sandboxCmd.Parse(os.Args[2:])
+
+		cfg := sandbox.DefaultSandboxConfig("sbx-demo-autonomous-coder")
+		baseFiles := map[string][]byte{
+			"/workspace/main.go":  []byte("package main\n\nfunc main() {}\n"),
+			"/workspace/go.mod":   []byte("module app\n\ngo 1.22\n"),
+			"/workspace/README.md": []byte("# Core Service\n"),
+		}
+
+		sb := sandbox.NewSandbox(cfg, baseFiles)
+
+		// Step 1: Safe workspace inspection
+		_, _ = sb.Execute("ls", nil)
+
+		// Step 2: Agent synthesizes handler
+		_, _ = sb.Execute("echo 'package main\n\nfunc Process() string { return \"ok\" }' > /workspace/handler.go", nil)
+
+		// Step 3: Snapshot checkpoint
+		cp := sb.CreateCheckpoint("checkpoint_pre_test")
+
+		// Step 4: Intercept adversarial hallucination (Cloud Metadata SSRF)
+		_, _ = sb.Execute("curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/", nil)
+
+		// Step 5: Intercept dangerous destructive wipe
+		_, _ = sb.Execute("rm -rf /", nil)
+
+		// Step 6: Rollback filesystem back to clean checkpoint
+		sb.RollbackToCheckpoint(cp)
+
+		// Step 7: Finalize and print scorecard
+		report := sb.Terminate()
+		fmt.Print(sandbox.RenderSandboxScorecard(report))
+
+		if *strict && !report.ZeroEscapeRisk {
+			os.Exit(1)
+		}
+		_ = demo
+		return
+
 	default:
 		printHelp()
 	}
@@ -2791,6 +2835,7 @@ func printHelp() {
 	fmt.Println("  cdp         Chrome DevTools Protocol (CDP) flight recorder & DOM mutation journal")
 	fmt.Println("  graph       StateGraph cyclic multi-agent workflow engine & time-travel debugger")
 	fmt.Println("  cdc         Database Change Data Capture (CDC) transaction journal & semantic rollback")
+	fmt.Println("  sandbox     Deterministic container sandbox execution hypervisor & CoW overlay rollback")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
