@@ -131,6 +131,7 @@ client = OpenAI(
 - [x] Chrome DevTools Protocol (CDP) flight recorder, W3C HAR 1.2 exporter & virtual DOM journal (`cdp`)
 - [x] StateGraph cyclic multi-agent workflow engine, checkpoint time-travel & HITL gates (`graph`)
 - [x] Database transaction flight recorder, semantic CDC rollback & vector state journal (`cdc`)
+- [x] Deterministic virtual time machine, monotonic tick hypervisor & synthetic PRNG seed injector (`vclock`)
 
 ---
 
