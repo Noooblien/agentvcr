@@ -26,6 +26,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/compact"
 	"github.com/Noooblien/agentvcr/pkg/consensus"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
+	"github.com/Noooblien/agentvcr/pkg/debugger"
 	"github.com/Noooblien/agentvcr/pkg/diff"
 	"github.com/Noooblien/agentvcr/pkg/drift"
 	"github.com/Noooblien/agentvcr/pkg/ebpf"
@@ -3321,6 +3322,179 @@ func main() {
 		_ = demo
 		return
 
+	case "debug":
+		debugCmd := flag.NewFlagSet("debug", flag.ExitOnError)
+		demo := debugCmd.Bool("demo", false, "Run interactive time-travel debugger demonstration")
+		mermaid := debugCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of debug trajectory")
+		strict := debugCmd.Bool("strict", false, "Exit with non-zero exit code if debugger operations or invariant checks fail")
+		breakTool := debugCmd.String("break-tool", "", "Set breakpoint for specific tool call (e.g. bash, web_search)")
+		breakStep := debugCmd.Int("break-step", 0, "Set breakpoint for specific step number")
+		_ = debugCmd.Parse(os.Args[2:])
+
+		now := time.Now()
+		sampleSession := &trace.Session{
+			ID:        "session-debug-demo",
+			AgentName: "autonomous-engineer",
+			CreatedAt: now.Add(-15 * time.Minute),
+			Metadata: map[string]string{
+				"task":        "Deploy resilient microservice cluster",
+				"environment": "production",
+				"retries":     "1",
+			},
+			Events: []trace.TraceEvent{
+				{
+					ID:        "evt-0",
+					Index:     0,
+					Timestamp: now.Add(-14 * time.Minute),
+					Type:      trace.EventLLMRequest,
+					Payload: map[string]interface{}{
+						"prompt": "Inspect current cluster deployment status and verify node health.",
+						"tokens": 420,
+					},
+				},
+				{
+					ID:        "evt-1",
+					Index:     1,
+					Timestamp: now.Add(-13 * time.Minute),
+					Type:      trace.EventToolCall,
+					Payload: map[string]interface{}{
+						"tool":    "kubectl_get",
+						"command": "kubectl get nodes -o json",
+						"tokens":  150,
+					},
+				},
+				{
+					ID:        "evt-2",
+					Index:     2,
+					Timestamp: now.Add(-12 * time.Minute),
+					Type:      trace.EventToolResult,
+					Payload: map[string]interface{}{
+						"status": "Ready",
+						"nodes":  3,
+						"state_mutation": map[string]interface{}{
+							"nodes_healthy": 3,
+							"cluster_ready": true,
+						},
+					},
+				},
+				{
+					ID:        "evt-3",
+					Index:     3,
+					Timestamp: now.Add(-11 * time.Minute),
+					Type:      trace.EventToolCall,
+					Payload: map[string]interface{}{
+						"tool":    "bash",
+						"command": "docker push ghcr.io/org/service:v2.1.0",
+						"tokens":  310,
+					},
+				},
+				{
+					ID:        "evt-4",
+					Index:     4,
+					Timestamp: now.Add(-10 * time.Minute),
+					Type:      trace.EventToolResult,
+					Payload: map[string]interface{}{
+						"exit_code": 0,
+						"digest":    "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+						"state_mutation": map[string]interface{}{
+							"image_digest": "sha256:7f83b1657ff1...",
+							"retries":      2,
+						},
+					},
+				},
+				{
+					ID:        "evt-5",
+					Index:     5,
+					Timestamp: now.Add(-9 * time.Minute),
+					Type:      trace.EventLLMResponse,
+					Payload: map[string]interface{}{
+						"content": "Image successfully pushed. Commencing rolling restart across 3 replicas.",
+						"tokens":  280,
+					},
+				},
+			},
+		}
+
+		engine := debugger.NewDebuggerEngine(sampleSession)
+
+		// Register Breakpoints
+		engine.AddBreakpoint(debugger.Breakpoint{
+			ID:         "bp-step-3",
+			Type:       debugger.BreakStep,
+			StepNumber: 3,
+			Enabled:    true,
+		})
+		engine.AddBreakpoint(debugger.Breakpoint{
+			ID:      "bp-tool-bash",
+			Type:    debugger.BreakToolCall,
+			Target:  "bash",
+			Enabled: true,
+		})
+		if *breakTool != "" {
+			engine.AddBreakpoint(debugger.Breakpoint{
+				ID:      "bp-cli-tool",
+				Type:    debugger.BreakToolCall,
+				Target:  *breakTool,
+				Enabled: true,
+			})
+		}
+		if *breakStep > 0 {
+			engine.AddBreakpoint(debugger.Breakpoint{
+				ID:         "bp-cli-step",
+				Type:       debugger.BreakStep,
+				StepNumber: *breakStep,
+				Enabled:    true,
+			})
+		}
+
+		// Register Invariant Watchpoint (triggers if retries exceed threshold)
+		engine.AddWatchpoint(debugger.Watchpoint{
+			ID:            "wp-retry-limit",
+			VariableKey:   "retries",
+			Operator:      ">",
+			ExpectedValue: 3,
+			Enabled:       true,
+		})
+
+		// Run Continue until breakpoint hit
+		hitEvent, err := engine.Continue()
+		if err != nil {
+			log.Fatalf("Debugger execution error: %v", err)
+		}
+
+		// Time-travel step back to verify rewinding
+		rewindEvent, errRewind := engine.StepBack()
+		if errRewind != nil {
+			log.Fatalf("Debugger time-travel error: %v", errRewind)
+		}
+		_ = rewindEvent
+
+		// Hot-patch working memory
+		engine.MutateMemory("debug_patched", true)
+		engine.MutateMemory("override_flag", "HOT_FIX_ACTIVE")
+
+		// Step forward again
+		stepEvt, errStep := engine.StepInto()
+		if errStep != nil {
+			log.Fatalf("Debugger step into error: %v", errStep)
+		}
+		_ = stepEvt
+
+		summary := engine.Summary()
+
+		if *mermaid {
+			fmt.Println(debugger.RenderDebuggerMermaid(summary))
+			return
+		}
+
+		fmt.Print(debugger.RenderDebuggerScorecard(summary))
+
+		if *strict && (err != nil || errRewind != nil || hitEvent == nil) {
+			log.Fatalf("Debugger strict assertion failed")
+		}
+		_ = demo
+		return
+
 	default:
 		printHelp()
 	}
@@ -3386,6 +3560,7 @@ func printHelp() {
 	fmt.Println("  memory      Autonomous hierarchical memory consolidation & Ebbinghaus decay")
 	fmt.Println("  finops      Token budget circuit breaker, runaway spend protector & rate cards")
 	fmt.Println("  checkpoint  Session checkpoint hibernation, delta compression & hot restoration")
+	fmt.Println("  debug       Time-travel agent debugger, conditional breakpoints & DAP hypervisor")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -3445,4 +3620,5 @@ func printHelp() {
 	fmt.Println("  agentvcr memory --demo -strict")
 	fmt.Println("  agentvcr finops --demo -strict")
 	fmt.Println("  agentvcr checkpoint --demo -strict")
+	fmt.Println("  agentvcr debug --demo -strict")
 }

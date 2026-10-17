@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Interactive Time-Travel Agent Debugger & DAP Hypervisor (`pkg/debugger`)**: Full-featured interactive debugger for multi-agent swarm trajectories supporting conditional breakpoints, state invariant watchpoints, time-travel step-back rewinding, and live hot-patch memory mutation.
+- **Conditional Breakpoint Engine**: Precision execution pauses triggered by step numbers (`BreakStep`), tool invocations (`BreakToolCall`), cumulative token limits (`BreakTokenThreshold`), errors (`BreakError`), regex payloads (`BreakRegex`), or complex boolean predicates (`BreakCondition`).
+- **State Invariant Watchpoints**: Monitors active working memory variables against boundary invariants (`==`, `!=`, `<`, `>`, `<=`, `>=`, `contains`, `not_empty`), automatically halting execution when agents violate state constraints.
+- **Microsecond Time-Travel Rewind (`StepBack`)**: Restores past execution frames, agent call stacks, token meters, and working memory from snapshot history with zero loss of state continuity.
+- **Debug Adapter Protocol (DAP) Translation Layer (`pkg/debugger/dap.go`)**: JSON-RPC 2.0 protocol adapter enabling seamless integration with VSCode, Neovim (`nvim-dap`), and standard IDE debuggers.
+- **Interactive Terminal Scorecard & Mermaid Flowchart (`agentvcr debug`)**: ANSI scorecard visualizing the program counter, multi-agent swarm call stack, active variables, breakpoint hit statistics, and trajectory flowcharts.
 - **Session Checkpoint Hibernation, Incremental Delta Compression & Hot Restoration (`pkg/checkpoint`)**: High-performance session state freeze and thawing hypervisor enabling agent swarm hibernation, step-level incremental delta compression, and hot execution restoration with SHA-256 cryptographic verification.
 - **Incremental Delta Compactor**: Computes forward/reverse state differences across consecutive turn checkpoints, reducing long-horizon storage volume by up to 85% via base-image + delta-patch reconstructions.
 - **Atomic Gzip Storage Engine with Cryptographic Verification**: Thread-safe compressed checkpoint serializer with tamper detection, metadata indexing, and atomic multi-file persistence.
