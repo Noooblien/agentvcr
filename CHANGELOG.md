@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Adversarial Model Context Protocol (MCP) Schema Fuzzer & Mutation Engine (`pkg/mcp/fuzzer.go`)**: Automated adversarial fuzz testing harness generating dynamic perturbations against tool input schemas across 8 attack vectors (type confusion, boundary values, Unicode/BIDI overrides, 16KB buffer overflows, OWASP prompt injection, null-byte path traversal, recursive nesting, and missing mandatory fields).
+- **Interactive MCP Fuzz CLI & Terminal Scorecard (`agentvcr mcp -action fuzz`)**: ANSI scorecard visualizing tool resilience ratings, blocked exploits, server crash containment, and Mermaid attack surface flowcharts.
 - **Agent-to-Agent (A2A) Protocol Transport, Card Discovery & Delegation Bus (`pkg/a2a`)**: Decentralized inter-agent wire protocol enabling secure agent card discovery, task delegation contracts, cryptographic Ed25519 payload signing, and flight-recorded message bus routing.
 - **Agent Card & Capability Directory (`pkg/a2a/identity.go`)**: Identity manager registering agent cards, roles, endpoints, and input/output capability schemas with Ed25519 keypair generation and cryptographic signature verification.
 - **Asynchronous Task Delegation Contracts (`pkg/a2a/router.go`)**: Thread-safe routing hub supporting `DELEGATE`, `RESULT`, `CANCEL`, `HEARTBEAT`, and `ACK` message envelopes with delivery SLAs, timeout handling, and hop limits.
