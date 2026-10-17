@@ -132,6 +132,7 @@ client = OpenAI(
 - [x] StateGraph cyclic multi-agent workflow engine, checkpoint time-travel & HITL gates (`graph`)
 - [x] Database transaction flight recorder, semantic CDC rollback & vector state journal (`cdc`)
 - [x] Deterministic virtual time machine, monotonic tick hypervisor & synthetic PRNG seed injector (`vclock`)
+- [x] Virtual Terminal PTY flight recorder, VT100 screen grid emulator & Asciinema v2 exporter (`pty`)
 
 ---
 
