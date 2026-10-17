@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **In-Browser Console Log Loopback & Hot-Patch Engine (`pkg/heal`)**: Reverse-engineered Lovable/Bolt.new-style autonomous self-healing runtime intercepting browser console errors (`ReferenceError`, `TypeError`, React hydration failures) and bundler HMR diagnostics (Vite/Next.js/Webpack).
+- **Zero-Error Convergence Loop (`agentvcr heal -loopback`)**: Multi-round automated diagnostic extraction, stack frame file/line parsing, and hot-patch code synthesizer that iteratively patches code files until 0 browser errors remain.
 - **Language Server Protocol (LSP 3.17) Daemon & Fast-Tab Engine (`pkg/lsp`)**: Native JSON-RPC 2.0 language server daemon operating over stdio and TCP sockets for direct Neovim, VSCode, and Zed editor integration.
 - **In-Memory Document Synchronization Store**: Multi-buffer state manager supporting full (`didOpen`, `didClose`) and incremental (`didChange`) edit ranges with automatic syntax context extraction.
 - **Speculative Completion & Custom Fast-Tab RPC (`agentvcr/fastTab`)**: Sub-millisecond predictive completion delivering multi-line ghost text suggestions, typing speed estimators, and live AgentVCR flight attestation telemetry over `textDocument/hover`.
