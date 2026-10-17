@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Language Server Protocol (LSP 3.17) Daemon & Fast-Tab Engine (`pkg/lsp`)**: Native JSON-RPC 2.0 language server daemon operating over stdio and TCP sockets for direct Neovim, VSCode, and Zed editor integration.
+- **In-Memory Document Synchronization Store**: Multi-buffer state manager supporting full (`didOpen`, `didClose`) and incremental (`didChange`) edit ranges with automatic syntax context extraction.
+- **Speculative Completion & Custom Fast-Tab RPC (`agentvcr/fastTab`)**: Sub-millisecond predictive completion delivering multi-line ghost text suggestions, typing speed estimators, and live AgentVCR flight attestation telemetry over `textDocument/hover`.
+- **LSP Terminal Scorecard & Interactive Demo (`agentvcr lsp --demo`)**: Rich ANSI terminal demonstration displaying active capabilities, buffer tracking, and speculative virtual ghost text diff preview.
 - **Recursive Multi-Agent Research Engine & Grounded Synthesis Tree (`pkg/research`)**: Reverse-engineered Perplexity / OpenAI Deep Research-style recursive goal decomposition into structured hypothesis nodes, multi-source evidence extraction (local code, docs, trace sessions, web), cryptographic SHA-256 citation digests, and hallucination pruning.
 - **Cross-Source Contradiction Resolution & Conflict Forensics**: Automated semantic conflict detection between contradictory assertions across heterogeneous documents with severity scoring and confidence-weighted resolution strategies.
 - **Mermaid Research Tree Visualizer & Executive Brief Generator (`agentvcr research`)**: Interactive terminal scorecard with confidence progress bars, dynamic markdown footnotes (`[^CIT-1]`), and automatic Mermaid flowchart DAG export.
