@@ -132,3 +132,85 @@ func TestSpeculate_PredictiveCacheAndScorecard(t *testing.T) {
 		t.Errorf("Expected scorecard title, got:\n%s", card)
 	}
 }
+
+func TestASTPredictor_GenerateDraftAndFastTab(t *testing.T) {
+	predictor := speculate.NewASTPredictor(speculate.DefaultPredictorConfig())
+
+	ctx := speculate.ASTContext{
+		Language:        "go",
+		CurrentFunction: "HandleRequest",
+		LeadingLines: []string{
+			"func HandleRequest(w http.ResponseWriter, r *http.Request) {",
+			"\tdata, err := io.ReadAll(r.Body)",
+		},
+		IndentLevel: 1,
+	}
+
+	pos := speculate.CursorPosition{
+		FilePath: "server.go",
+		Line:     3,
+		Column:   1,
+	}
+
+	draft, err := predictor.GenerateDraft(ctx, pos)
+	if err != nil {
+		t.Fatalf("GenerateDraft failed: %v", err)
+	}
+
+	if draft.Confidence < 0.70 {
+		t.Errorf("expected high confidence score, got %f", draft.Confidence)
+	}
+	if len(draft.PredictedLines) < 2 {
+		t.Fatalf("expected multi-line completion, got %d lines", len(draft.PredictedLines))
+	}
+	if !strings.Contains(draft.PredictedLines[0], "if err != nil") {
+		t.Errorf("expected error checking idiom, got: %s", draft.PredictedLines[0])
+	}
+
+	card := speculate.RenderDraftCard(draft)
+	if !strings.Contains(card, "Multi-Token AST Edit Draft") {
+		t.Errorf("invalid draft card format: %s", card)
+	}
+
+	// Validate user accept keystrokes
+	acceptedUserLines := []string{
+		"\tif err != nil {",
+		"\t\treturn nil, fmt.Errorf(\"failed: %w\", err)",
+		"\t}",
+	}
+
+	res, err := predictor.ValidateDraft(draft.DraftID, acceptedUserLines)
+	if err != nil {
+		t.Fatalf("ValidateDraft failed: %v", err)
+	}
+
+	if !res.Accepted {
+		t.Errorf("expected draft to be accepted with high overlap")
+	}
+	if res.TimeSavedMs <= 0 {
+		t.Errorf("expected positive time saved, got %dms", res.TimeSavedMs)
+	}
+}
+
+func TestASTPredictor_TypeScriptTryCatch(t *testing.T) {
+	predictor := speculate.NewASTPredictor(speculate.DefaultPredictorConfig())
+
+	ctx := speculate.ASTContext{
+		Language: "typescript",
+		LeadingLines: []string{
+			"async function fetchData() {",
+			"  try {",
+		},
+		IndentLevel: 1,
+	}
+
+	draft, err := predictor.GenerateDraft(ctx, speculate.CursorPosition{FilePath: "index.ts", Line: 3, Column: 1})
+	if err != nil {
+		t.Fatalf("GenerateDraft TS failed: %v", err)
+	}
+
+	if !strings.Contains(draft.PredictedLines[0], "} catch") {
+		t.Errorf("expected catch block prediction, got: %s", draft.PredictedLines[0])
+	}
+}
+
