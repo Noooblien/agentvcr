@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Multi-Hypothesis Trajectory Tree & Merkle Branch Search Hypervisor (`pkg/tree`)**: Hierarchical tree-structured trajectory exploration engine supporting Tree-of-Thought (ToT), beam search, and best-first search hypervising over alternative agent reasoning hypotheses, prompt variations, and tool execution branches.
+- **Cryptographic Merkle Tree Attestation & Proof Chains (`pkg/tree/merkle.go`)**: Deterministic SHA-256 Merkle root computation across branching trajectories with verifiable upward inclusion proofs and cross-session subtree deduplication.
+- **Adaptive Branch Pruning & Heuristic Hypervisor (`pkg/tree/hypervisor.go`)**: Real-time pruning of dead-end hypotheses based on confidence score thresholds, runaway token budgets, semantic errors, and cyclic loop detection.
+- **Linear Session Export & Checkpointing**: Extracts verified winning paths from the exploration tree into replayable, deterministic `trace.Session` formats with monotonic checksums.
+- **Interactive Tree Scorecard & Mermaid Visualizer (`agentvcr tree --demo`)**: Rich ANSI terminal scorecard tracking branch hierarchy, cumulative scores, token consumption, and Mermaid flowchart diagrams color-coding winning paths and pruned branches.
 - **LLM-as-a-Judge Multi-Dimensional Trajectory Evaluation & Rubric Engine (`pkg/eval/judge.go`)**: Qualitative and quantitative trajectory scoring across 6 dimensions (`GOAL_COMPLETION`, `SAFETY_ALIGNMENT`, `TOOL_EFFICIENCY`, `FACTUAL_ACCURACY`, `STEP_COHERENCE`, and `CONSTRAINT_CHECK`).
 - **Standardized Enterprise & YC Agent Rubric**: Comprehensive criteria framework with weighted scoring, minimal threshold gating, forbidden zero-trust token scanning, and critical breach containment.
 - **Interactive Eval Scorecard & Mermaid Radar Visualizer (`agentvcr eval --demo` / `agentvcr eval -judge`)**: Rich ANSI terminal scorecard tracking overall grades (`PASS`, `WARNING`, `FAIL`, `CRITICAL_BREACH`), dimension averages, and Mermaid evaluation DAG topologies.
