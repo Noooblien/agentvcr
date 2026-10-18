@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Continuous Model Shadowing & Live A/B Drift Evaluation (`pkg/shadow`)**: Enterprise-grade traffic shadowing and continuous model A/B evaluation engine enabling asynchronous dark launches (`shadow_dark_launch`), traffic splits (`ab_traffic_split`), and canary ramping across competing foundation models.
+- **Automated Semantic Drift & Cost/Latency Gating (`pkg/shadow/evaluator.go`)**: Turn-by-turn semantic similarity profiling, token-level divergence detection, tool execution consistency tracking, and comparative cost/latency ratio benchmarking.
+- **Circuit Breaker Auto-Rollback Protection (`pkg/shadow/engine.go`)**: Automated safety circuit breaker tripping and rollback when candidate error rates exceed thresholds (e.g. 2%), severe semantic drift occurs, or tool divergence is detected.
+- **Interactive Shadow Scorecard & Mermaid Visualizer (`agentvcr shadow --demo`)**: Rich ANSI terminal scorecard tracking model candidates, step-level divergence rationale, cost deltas, and Mermaid flowcharts visualizing live split architectures.
 - **Multi-Agent Swarm Orchestrator, Dynamic Handoffs & Debate Flight Recorder (`pkg/swarm`)**: Production-grade multi-agent swarm runtime coordinating collaborative agent networks through dynamic stateful handoffs (`transfer_to_<agent>`), multi-agent debate panels with jury consensus voting, and deterministic trajectory flight recording.
 - **Ping-Pong & Infinite Handoff Deadlock Cycle Detection (`pkg/swarm/cycle.go`)**: Real-time cycle detector and circuit breaker identifying recursive handoff loops ($A \rightarrow B \rightarrow A \rightarrow B$) and circular multi-node walks before token runaway or cost escalation occurs.
 - **Debate & Multi-Agent Jury Panel Consensus (`pkg/swarm/orchestrator.go`)**: Aggregates structured debate ballots across competing specialist agents with weighted confidence scoring, supermajority detection, and dissensus localization.
