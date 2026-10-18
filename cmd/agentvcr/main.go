@@ -59,6 +59,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/research"
 	"github.com/Noooblien/agentvcr/pkg/sandbox"
+	"github.com/Noooblien/agentvcr/pkg/sentry"
 	"github.com/Noooblien/agentvcr/pkg/shadow"
 	"github.com/Noooblien/agentvcr/pkg/sim"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
@@ -202,6 +203,60 @@ func main() {
 		}
 
 		if *strict && report.Verdict == diff.VerdictFail {
+			os.Exit(1)
+		}
+
+	case "sentry":
+		sentryCmd := flag.NewFlagSet("sentry", flag.ExitOnError)
+		sessionID := sentryCmd.String("id", "", "Trace session ID to analyze for anomalies")
+		demo := sentryCmd.Bool("demo", false, "Run comprehensive sentry anomaly detection demo")
+		strict := sentryCmd.Bool("strict", false, "Exit with code 1 if circuit breaker is tripped")
+		mermaid := sentryCmd.Bool("mermaid", false, "Output Mermaid telemetry triage flowchart")
+		maxRepetition := sentryCmd.Int("max-rep", 3, "Maximum allowed consecutive tool repetitions before alert")
+		_ = sentryCmd.Parse(os.Args[2:])
+
+		cfg := sentry.DefaultSentryConfig()
+		if *maxRepetition > 0 {
+			cfg.MaxToolRepetition = *maxRepetition
+		}
+		engine := sentry.NewEngine(cfg)
+
+		if *demo {
+			scenarios := sentry.GenerateDemoScenarios()
+			fmt.Printf("\n\033[1;36m========================================================================================\033[0m\n")
+			fmt.Printf("   \033[1;37mAGENTVCR RUNTIME TRAJECTORY ANOMALY SENTRY & CIRCUIT BREAKER DEMO (%d RUNS)\033[0m\n", len(scenarios))
+			fmt.Printf("\033[1;36m========================================================================================\033[0m\n")
+
+			tripped := 0
+			for i, sc := range scenarios {
+				fmt.Printf("\n\033[1;33m[Scenario %d/%d]\033[0m \033[1m%s\033[0m: %s\n", i+1, len(scenarios), sc.Name, sc.Description)
+				verdict := engine.AnalyzeTrajectory(sc.Events)
+				fmt.Print(sentry.RenderSentryScorecard(verdict, sc.SessionID))
+				if verdict.Action == sentry.ActionTripCircuitBreaker {
+					tripped++
+				}
+			}
+			fmt.Printf("\n\033[1;32m✓ Sentry Demo Complete.\033[0m Evaluated %d scenarios (%d circuit-breaker trips).\n\n", len(scenarios), tripped)
+			return
+		}
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr sentry -id <session_id> or agentvcr sentry --demo")
+		}
+
+		sess, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		verdict := engine.AnalyzeTrajectory(sess.Events)
+		if *mermaid {
+			fmt.Println(sentry.RenderSentryMermaid(verdict))
+			return
+		}
+
+		fmt.Print(sentry.RenderSentryScorecard(verdict, *sessionID))
+		if *strict && verdict.Action == sentry.ActionTripCircuitBreaker {
 			os.Exit(1)
 		}
 
@@ -4962,6 +5017,7 @@ func printHelp() {
 	fmt.Println("  view        Inspect recorded agent trajectory and token events")
 	fmt.Println("  fork        Branch an execution trace at an exact step for re-testing")
 	fmt.Println("  diff        Semantic trajectory diff, sequence alignment & regression shield")
+	fmt.Println("  sentry      Continuous trajectory anomaly detection & circuit breaker engine")
 	fmt.Println("  eval        Run deterministic assertion suites and SLAs on trajectories")
 	fmt.Println("  play        Interactive visual terminal playback of agent execution")
 	fmt.Println("  snapshot    Capture or restore deterministic workspace filesystem state")
