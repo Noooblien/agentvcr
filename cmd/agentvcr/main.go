@@ -163,34 +163,46 @@ func main() {
 		diffCmd := flag.NewFlagSet("diff", flag.ExitOnError)
 		baseID := diffCmd.String("base", "", "Base trace session ID")
 		targetID := diffCmd.String("target", "", "Target/forked trace session ID")
+		demo := diffCmd.Bool("demo", false, "Run demonstration comparing baseline autonomous bug-fixer vs candidate")
+		strict := diffCmd.Bool("strict", false, "Exit with code 1 if regression or critical drift detected")
+		mermaid := diffCmd.Bool("mermaid", false, "Output Mermaid diagram markup of trajectory divergence DAG")
+		tolerance := diffCmd.Float64("tolerance", 0.80, "Minimum required stability score (0.0 - 1.0, default 0.80)")
 		_ = diffCmd.Parse(os.Args[2:])
 
-		if *baseID == "" || *targetID == "" {
-			log.Fatal("Usage: agentvcr diff -base <base_id> -target <target_id>")
-		}
+		var baseSession, targetSession *trace.Session
+		var err error
 
-		baseSession, err := store.LoadSession(*baseID)
-		if err != nil {
-			log.Fatalf("Error loading base session: %v", err)
-		}
-		targetSession, err := store.LoadSession(*targetID)
-		if err != nil {
-			log.Fatalf("Error loading target session: %v", err)
-		}
-
-		res := diff.CompareSessions(baseSession, targetSession)
-		fmt.Printf("🔍 [AgentVCR] Trajectory Comparison: %s ➔ %s\n", *baseID, *targetID)
-		fmt.Printf("   Event Count:     %d vs %d\n", res.BaseEventCount, res.TargetEventCount)
-		fmt.Printf("   Token Delta:     %+d tokens\n", res.TokenDelta)
-		fmt.Printf("   Cost Delta:      $%+.4f USD\n", res.CostDeltaUSD)
-		fmt.Printf("   Duration Delta:  %+d ms\n", res.DurationDeltaMs)
-		if res.DivergenceStep == -1 {
-			fmt.Printf("   Status:          Identical execution trajectories.\n")
+		if *demo {
+			baseSession, targetSession = diff.GenerateDemoSessions(true)
 		} else {
-			fmt.Printf("   ⚡ Divergence:   Step %d\n", res.DivergenceStep)
-			if res.DivergentDetails != nil {
-				fmt.Printf("   Reason:          %s\n", res.DivergentDetails.Reason)
+			if *baseID == "" || *targetID == "" {
+				log.Fatal("Usage: agentvcr diff -base <base_id> -target <target_id> [flags] or agentvcr diff --demo")
 			}
+			baseSession, err = store.LoadSession(*baseID)
+			if err != nil {
+				log.Fatalf("Error loading base session: %v", err)
+			}
+			targetSession, err = store.LoadSession(*targetID)
+			if err != nil {
+				log.Fatalf("Error loading target session: %v", err)
+			}
+		}
+
+		opts := diff.DiffOptions{
+			Tolerance:               *tolerance,
+			IgnoreCosmeticParaphrase: true,
+			Strict:                  *strict,
+		}
+
+		report := diff.AnalyzeSemanticDiff(baseSession, targetSession, opts)
+		fmt.Print(diff.RenderDiffScorecard(report))
+
+		if *mermaid {
+			fmt.Println("\n" + diff.RenderDiffMermaid(report))
+		}
+
+		if *strict && report.Verdict == diff.VerdictFail {
+			os.Exit(1)
 		}
 
 	case "eval":
@@ -4949,7 +4961,7 @@ func printHelp() {
 	fmt.Println("  record      Start transparent reverse-proxy recording session")
 	fmt.Println("  view        Inspect recorded agent trajectory and token events")
 	fmt.Println("  fork        Branch an execution trace at an exact step for re-testing")
-	fmt.Println("  diff        Compare two trajectories to pinpoint execution divergence")
+	fmt.Println("  diff        Semantic trajectory diff, sequence alignment & regression shield")
 	fmt.Println("  eval        Run deterministic assertion suites and SLAs on trajectories")
 	fmt.Println("  play        Interactive visual terminal playback of agent execution")
 	fmt.Println("  snapshot    Capture or restore deterministic workspace filesystem state")
@@ -5016,7 +5028,8 @@ func printHelp() {
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
 	fmt.Println("  agentvcr fork -id trace_1760800000 -step 4")
-	fmt.Println("  agentvcr diff -base trace_1 -target trace_1_fork")
+	fmt.Println("  agentvcr diff --demo -strict --mermaid")
+	fmt.Println("  agentvcr diff -base trace_1 -target trace_1_fork -tolerance 0.85")
 	fmt.Println("  agentvcr eval -id trace_1 -no-errors -max-tokens 5000")
 	fmt.Println("  agentvcr eval --demo -strict")
 	fmt.Println("  agentvcr eval -id trace_1 -judge -strict")

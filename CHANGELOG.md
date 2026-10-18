@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Semantic Trajectory Diff, Dynamic Sequence Alignment & Regression Shield (`pkg/diff`)**: Deep structural and semantic comparison engine evaluating candidate and forked trajectories against baselines with multi-dimensional divergence classification (`MATCH_EXACT`, `MATCH_SEMANTIC`, `PARAM_DRIFT`, `CONTROL_FLOW_DRIFT`, `STEP_INSERTED`, `STEP_DELETED`, `OUTCOME_REGRESSION`, `ERROR_INDUCED`).
+- **Global Sequence Alignment & Needleman-Wunsch Alignment Matrix (`pkg/diff/engine.go`)**: Dynamic programming trajectory aligner matching multi-step agent actions even under intermediate exploratory deviations or reordered tool invocations.
+- **Deep Parameter & NLP Paraphrase Analysis**: Key-value delta analyzer for tool invocation arguments and token-normalized NLP similarity scorer evaluating LLM responses without false-positive penalization of semantic paraphrasing.
+- **Stability Scoring & Regression Verdict Shield**: Computes normalized trajectory stability metrics ($0.0 - 100.0\%$), tool sequence congruence, token and cost deltas, and automated CI/CD gating verdicts (`PASS`, `WARN`, `FAIL`).
+- **Interactive Diff Scorecard & Mermaid Sequence Topology (`agentvcr diff --demo --mermaid`)**: Rich ANSI terminal scorecard with unified step comparison table, parameter drift callouts, and Mermaid sequence divergence flowchart generation.
 - **Model Context Protocol (MCP) Multi-Server Router, Load Balancer & Dynamic Circuit Breaker (`pkg/mcp/router.go`)**: High-performance JSON-RPC 2.0 routing and dispatch layer clustering multiple upstream MCP servers with configurable load balancing policies (`round_robin`, `least_connections`, `latency_optimized`, `random`).
 - **Dynamic Per-Server Circuit Breakers & Auto-Recovery**: Automatic failure tracking with configurable consecutive failure tripping thresholds, cooldown backoff intervals, and half-open exploratory probes that safely reintroduce recovered upstream servers to the active pool.
 - **Pattern-Based Namespace Routing & Automatic Failover**: Fine-grained prefix and wildcard matching (`github_*`, `bash_*`, `*`) with multi-target server pools and automatic failover retries across healthy candidates.
