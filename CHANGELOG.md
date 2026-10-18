@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Standardized Evaluation Harness & Unbiased Pass@k Benchmarking Engine (`pkg/harness`)**: Multi-standard benchmark execution harness for autonomous software engineering and web agents with native support for SWE-bench Lite (`swe_bench`), HumanEval (`humaneval`), and WebArena (`webarena`).
+- **Unbiased Pass@k Metric Estimator (`pkg/harness/engine.go`)**: Mathematically rigorous pass@$k$ estimator ($k=1, 5, 10$) evaluating agent problem-solving coverage across multi-sample trials with test-patch verification.
+- **Task Specification & Verification Matrix (`pkg/harness/types.go`)**: Tracks task fail-to-pass and pass-to-pass suites, step counts, patch synthesis, execution time, token consumption, and cost tracking.
+- **Interactive Benchmark Scorecard & Mermaid Leaderboard (`agentvcr harness --demo`)**: Rich ANSI terminal scorecard visualizing pass@$k$ distributions, resolved task rates, and Mermaid pipeline flowcharts.
 - **Trajectory Distillation & Alignment Dataset Synthesizer (`pkg/distill`)**: Distills multi-turn agent flight recordings into clean, token-efficient fine-tuning (SFT) and preference alignment (DPO) datasets for training smaller specialist models from frontier agent trajectories.
 - **Automated DPO Preference Pairing (`pkg/distill/engine.go`)**: Synthesizes `chosen` vs `rejected` trajectory pairs from successful and failed/forked runs, automatically identifying trajectory divergence points and calculating objective reward margin deltas ($\Delta R$).
 - **Multi-Format Dataset Exporters**: Full serialization support for HuggingFace Direct Preference Optimization JSONL (`dpo`), OpenAI Chat Completion fine-tuning JSONL (`sft`), and multi-turn ShareGPT format (`sharegpt`).

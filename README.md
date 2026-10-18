@@ -149,6 +149,7 @@ client = OpenAI(
 - [x] Ephemeral Firecracker microVM jail containment & memory snapshot hypervisor (`microvm`)
 - [x] Steganographic provenance watermarking & text fingerprint attestation engine (`watermark`)
 - [x] Trajectory distillation & alignment dataset synthesizer (`distill`)
+- [x] Standardized evaluation harness & unbiased pass@k benchmarking engine (`harness`)
 
 ---
 
