@@ -71,6 +71,16 @@ client = OpenAI(
 ./bin/agentvcr fork -id trace_1760800000 -step 5
 ```
 
+### 5. Trajectory Anomaly Sentry & Circuit Breaker
+
+```bash
+# Run real-time trajectory anomaly sentry demo across 4 scenarios
+./bin/agentvcr sentry --demo
+
+# Inspect specific trajectory for tool loops, token velocity spikes, and latency outliers
+./bin/agentvcr sentry -id trace_1760800000 --mermaid
+```
+
 ---
 
 ## Roadmap
@@ -152,6 +162,7 @@ client = OpenAI(
 - [x] Standardized evaluation harness & unbiased pass@k benchmarking engine (`harness`)
 - [x] Model Context Protocol (MCP) multi-server router, load balancer & dynamic circuit breaker (`mcp -action router`)
 - [x] Semantic trajectory diff, sequence alignment & regression shield (`diff`)
+- [x] Continuous trajectory anomaly sentry & runtime regression circuit breaker (`sentry`)
 
 ---
 
