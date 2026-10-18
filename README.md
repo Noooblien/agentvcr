@@ -145,6 +145,7 @@ client = OpenAI(
 - [x] LLM-as-a-Judge multi-dimensional rubric trajectory evaluation & grading engine (`eval -judge`)
 - [x] Multi-hypothesis trajectory tree, Merkle attestation & branch search hypervisor (`tree`)
 - [x] Multi-agent swarm orchestrator, dynamic handoff & debate flight recorder (`swarm`)
+- [x] Continuous model shadowing, live A/B drift evaluation & promotion gates (`shadow`)
 
 ---
 

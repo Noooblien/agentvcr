@@ -56,6 +56,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/research"
 	"github.com/Noooblien/agentvcr/pkg/sandbox"
+	"github.com/Noooblien/agentvcr/pkg/shadow"
 	"github.com/Noooblien/agentvcr/pkg/sim"
 	"github.com/Noooblien/agentvcr/pkg/snapshot"
 	"github.com/Noooblien/agentvcr/pkg/speculate"
@@ -4209,6 +4210,143 @@ func main() {
 
 		log.Fatal("Usage: agentvcr swarm --demo [--topology handoff|debate|cycle] [--max-hops 10] [--mermaid] [--strict]")
 
+	case "shadow":
+		shadowCmd := flag.NewFlagSet("shadow", flag.ExitOnError)
+		demo := shadowCmd.Bool("demo", false, "Run continuous trajectory shadowing and A/B drift evaluation demo")
+		modeStr := shadowCmd.String("mode", "shadow_dark_launch", "Routing mode: shadow_dark_launch, ab_traffic_split, canary_ramping")
+		maxDrift := shadowCmd.Float64("max-drift", 0.35, "Maximum allowable semantic drift threshold (0.0 - 1.0)")
+		maxLatencyRatio := shadowCmd.Float64("max-latency", 1.30, "Maximum allowable latency degradation ratio")
+		candidateModelName := shadowCmd.String("candidate", "Claude-3.5-Sonnet", "Name of candidate model under test")
+		mermaid := shadowCmd.Bool("mermaid", false, "Render Mermaid diagram of traffic routing & gate comparison")
+		strict := shadowCmd.Bool("strict", false, "Exit with non-zero exit code if circuit breaker trips or promotion is blocked")
+		_ = shadowCmd.Parse(os.Args[2:])
+
+		if *demo {
+			now := time.Now()
+
+			baseModel := shadow.ModelCandidate{
+				ID:              "gpt-4o",
+				ModelName:       "GPT-4o",
+				Provider:        "OpenAI",
+				CostPer1kInput:  0.005,
+				CostPer1kOutput: 0.015,
+			}
+			candModel := shadow.ModelCandidate{
+				ID:              "claude-3-5-sonnet",
+				ModelName:       *candidateModelName,
+				Provider:        "Anthropic",
+				CostPer1kInput:  0.003,
+				CostPer1kOutput: 0.012, // 20% cost reduction
+			}
+
+			cfg := shadow.ShadowConfig{
+				Mode:                   shadow.TrafficRoutingMode(*modeStr),
+				CandidatePercentage:    20.0,
+				MaxDriftThreshold:      *maxDrift,
+				MaxLatencyRatio:        *maxLatencyRatio,
+				MaxCostIncreaseRatio:   1.10,
+				MaxAllowedErrorRate:    0.02,
+				MinSampleCount:         2,
+				AutoRollbackOnBreach:   true,
+			}
+
+			engine := shadow.NewShadowEngine(cfg, baseModel, candModel)
+
+			// Trajectory 1: Infrastructure Diagnosis
+			sessBase1 := &trace.Session{
+				ID:        "shadow-session-infra-01",
+				AgentName: "infra-agent-baseline",
+				Events: []trace.TraceEvent{
+					{
+						ID: "b1-0", Index: 0, Type: trace.EventLLMRequest, Timestamp: now.Add(-10 * time.Minute), DurationMs: 120,
+						Payload: map[string]interface{}{"prompt": "Investigate OOMKilled pods on production ingress controller", "tokens": 140},
+					},
+					{
+						ID: "b1-1", Index: 1, Type: trace.EventToolCall, Timestamp: now.Add(-9 * time.Minute), DurationMs: 180,
+						Payload: map[string]interface{}{"tool": "k8s_get_events", "command": "kubectl get events -n ingress", "tokens": 60},
+					},
+					{
+						ID: "b1-2", Index: 2, Type: trace.EventLLMResponse, Timestamp: now.Add(-8 * time.Minute), DurationMs: 250,
+						Payload: map[string]interface{}{"content": "Identified memory exhaustion cgroup limit at 2Gi. Recommend patch to 4Gi.", "tokens": 85},
+					},
+				},
+			}
+			sessCand1 := &trace.Session{
+				ID:        "shadow-session-infra-01",
+				AgentName: "infra-agent-candidate",
+				Events: []trace.TraceEvent{
+					{
+						ID: "c1-0", Index: 0, Type: trace.EventLLMRequest, Timestamp: now.Add(-10 * time.Minute), DurationMs: 110,
+						Payload: map[string]interface{}{"prompt": "Investigate OOMKilled pods on production ingress controller", "tokens": 140},
+					},
+					{
+						ID: "c1-1", Index: 1, Type: trace.EventToolCall, Timestamp: now.Add(-9 * time.Minute), DurationMs: 165,
+						Payload: map[string]interface{}{"tool": "k8s_get_events", "command": "kubectl get events -n ingress", "tokens": 58},
+					},
+					{
+						ID: "c1-2", Index: 2, Type: trace.EventLLMResponse, Timestamp: now.Add(-8 * time.Minute), DurationMs: 220,
+						Payload: map[string]interface{}{"content": "Observed OOM cgroup termination on ingress container. Suggest increasing memory limit to 4Gi.", "tokens": 82},
+					},
+				},
+			}
+			_ = engine.CompareTrajectories(sessBase1, sessCand1)
+
+			// Trajectory 2: Database Latency Remediation
+			sessBase2 := &trace.Session{
+				ID:        "shadow-session-db-02",
+				AgentName: "db-agent-baseline",
+				Events: []trace.TraceEvent{
+					{
+						ID: "b2-0", Index: 0, Type: trace.EventLLMRequest, Timestamp: now.Add(-5 * time.Minute), DurationMs: 130,
+						Payload: map[string]interface{}{"prompt": "Resolve p99 query latency degradation on orders database", "tokens": 160},
+					},
+					{
+						ID: "b2-1", Index: 1, Type: trace.EventToolCall, Timestamp: now.Add(-4 * time.Minute), DurationMs: 210,
+						Payload: map[string]interface{}{"tool": "pg_stat_statements", "command": "SELECT query, mean_exec_time FROM pg_stat_statements", "tokens": 75},
+					},
+					{
+						ID: "b2-2", Index: 2, Type: trace.EventLLMResponse, Timestamp: now.Add(-3 * time.Minute), DurationMs: 280,
+						Payload: map[string]interface{}{"content": "Index missing on orders(customer_id, created_at). Created CONCURRENTLY index.", "tokens": 90},
+					},
+				},
+			}
+			sessCand2 := &trace.Session{
+				ID:        "shadow-session-db-02",
+				AgentName: "db-agent-candidate",
+				Events: []trace.TraceEvent{
+					{
+						ID: "c2-0", Index: 0, Type: trace.EventLLMRequest, Timestamp: now.Add(-5 * time.Minute), DurationMs: 115,
+						Payload: map[string]interface{}{"prompt": "Resolve p99 query latency degradation on orders database", "tokens": 155},
+					},
+					{
+						ID: "c2-1", Index: 1, Type: trace.EventToolCall, Timestamp: now.Add(-4 * time.Minute), DurationMs: 195,
+						Payload: map[string]interface{}{"tool": "pg_stat_statements", "command": "SELECT query, mean_exec_time FROM pg_stat_statements", "tokens": 70},
+					},
+					{
+						ID: "c2-2", Index: 2, Type: trace.EventLLMResponse, Timestamp: now.Add(-3 * time.Minute), DurationMs: 240,
+						Payload: map[string]interface{}{"content": "Sequential scan bottleneck detected on orders table. Added composite index on customer_id.", "tokens": 88},
+					},
+				},
+			}
+			_ = engine.CompareTrajectories(sessBase2, sessCand2)
+
+			report := engine.GenerateAuditReport()
+
+			if *mermaid {
+				fmt.Println(shadow.RenderShadowMermaid(report))
+				return
+			}
+
+			fmt.Print(shadow.RenderShadowScorecard(report))
+
+			if *strict && (report.CircuitBreakerTripped || report.Status != "PROMOTABLE") {
+				log.Fatalf("Shadow evaluation failed strict check: status=%s (breaker=%v)", report.Status, report.CircuitBreakerTripped)
+			}
+			return
+		}
+
+		log.Fatal("Usage: agentvcr shadow --demo [--mode shadow_dark_launch|ab_traffic_split] [--max-drift 0.35] [--mermaid] [--strict]")
+
 	default:
 		printHelp()
 	}
@@ -4278,6 +4416,7 @@ func printHelp() {
 	fmt.Println("  a2a         Agent-to-Agent (A2A) protocol transport, card discovery & delegation")
 	fmt.Println("  tree        Multi-hypothesis trajectory tree, Merkle attestation & branch search")
 	fmt.Println("  swarm       Multi-agent swarm orchestrator, dynamic handoff & debate flight recorder")
+	fmt.Println("  shadow      Continuous model shadowing, A/B drift evaluation & promotion gates")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -4345,4 +4484,5 @@ func printHelp() {
 	fmt.Println("  agentvcr tree --demo -strict")
 	fmt.Println("  agentvcr swarm --demo -strict")
 	fmt.Println("  agentvcr swarm --demo --topology debate -strict")
+	fmt.Println("  agentvcr shadow --demo -strict")
 }
