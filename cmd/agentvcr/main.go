@@ -45,6 +45,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/lsp"
 	"github.com/Noooblien/agentvcr/pkg/mcp"
 	"github.com/Noooblien/agentvcr/pkg/memory"
+	"github.com/Noooblien/agentvcr/pkg/microvm"
 	"github.com/Noooblien/agentvcr/pkg/otel"
 	"github.com/Noooblien/agentvcr/pkg/perf"
 	"github.com/Noooblien/agentvcr/pkg/policy"
@@ -4347,6 +4348,75 @@ func main() {
 
 		log.Fatal("Usage: agentvcr shadow --demo [--mode shadow_dark_launch|ab_traffic_split] [--max-drift 0.35] [--mermaid] [--strict]")
 
+	case "microvm":
+		vmCmd := flag.NewFlagSet("microvm", flag.ExitOnError)
+		demo := vmCmd.Bool("demo", false, "Run Firecracker microVM jail containment & snapshot demo")
+		trapBreach := vmCmd.Bool("trap-breach", true, "Simulate and trap seccomp/chroot isolation violations")
+		mermaid := vmCmd.Bool("mermaid", false, "Render Mermaid diagram of microVM containment boundary")
+		strict := vmCmd.Bool("strict", false, "Exit with non-zero exit code if microVM containment breaches fail to be caught")
+		_ = vmCmd.Parse(os.Args[2:])
+
+		if *demo {
+			hyp := microvm.NewHypervisor()
+
+			cfg := microvm.MicroVMConfig{
+				VMID:        "microvm-secure-sandbox-01",
+				KernelImage: "/var/lib/firecracker/vmlinux-5.10.bin",
+				RootFSDrive: "/var/lib/firecracker/alpine-rootfs.ext4",
+				VCPUCount:   2,
+				MemoryMB:    512,
+				Policy:      microvm.DefaultJailPolicy(),
+				ChrootPath:  "/srv/jail/microvm-01",
+			}
+
+			vm, err := hyp.SpawnVM(cfg)
+			if err != nil {
+				log.Fatalf("MicroVM spawn error: %v", err)
+			}
+
+			results := make([]microvm.ExecutionResult, 0)
+
+			// Command 1: Nominal code compilation
+			res1, _ := hyp.ExecuteInJail(vm.Config.VMID, "go build -o /tmp/runner main.go")
+			results = append(results, *res1)
+
+			// Step snapshot
+			snap1, _ := hyp.CreateSnapshot(vm.Config.VMID)
+
+			// Command 2: Nominal execution
+			res2, _ := hyp.ExecuteInJail(vm.Config.VMID, "/tmp/runner --batch-size 32")
+			results = append(results, *res2)
+
+			// Command 3: Host credential escape attempt (Trapped by chroot policy)
+			if *trapBreach {
+				res3, _ := hyp.ExecuteInJail(vm.Config.VMID, "cat /etc/shadow")
+				results = append(results, *res3)
+
+				// Rollback restore to pre-breach clean state
+				_, _ = hyp.RestoreSnapshot(vm.Config.VMID, snap1.SnapshotID)
+
+				// Command 4: Host reboot syscall attempt (Trapped by seccomp policy)
+				res4, _ := hyp.ExecuteInJail(vm.Config.VMID, "reboot -f")
+				results = append(results, *res4)
+			}
+
+			report := hyp.GenerateReport(vm.Config.VMID, results)
+
+			if *mermaid {
+				fmt.Println(microvm.RenderMicroVMMermaid(report))
+				return
+			}
+
+			fmt.Print(microvm.RenderMicroVMScorecard(report))
+
+			if *strict && (report.BreachesDetected == 0 && *trapBreach) {
+				log.Fatalf("MicroVM strict check failed: expected breaches to be detected and contained")
+			}
+			return
+		}
+
+		log.Fatal("Usage: agentvcr microvm --demo [--trap-breach] [--mermaid] [--strict]")
+
 	default:
 		printHelp()
 	}
@@ -4417,6 +4487,7 @@ func printHelp() {
 	fmt.Println("  tree        Multi-hypothesis trajectory tree, Merkle attestation & branch search")
 	fmt.Println("  swarm       Multi-agent swarm orchestrator, dynamic handoff & debate flight recorder")
 	fmt.Println("  shadow      Continuous model shadowing, A/B drift evaluation & promotion gates")
+	fmt.Println("  microvm     Ephemeral Firecracker microVM jail containment & memory snapshots")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -4485,4 +4556,5 @@ func printHelp() {
 	fmt.Println("  agentvcr swarm --demo -strict")
 	fmt.Println("  agentvcr swarm --demo --topology debate -strict")
 	fmt.Println("  agentvcr shadow --demo -strict")
+	fmt.Println("  agentvcr microvm --demo -strict")
 }

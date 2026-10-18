@@ -146,6 +146,7 @@ client = OpenAI(
 - [x] Multi-hypothesis trajectory tree, Merkle attestation & branch search hypervisor (`tree`)
 - [x] Multi-agent swarm orchestrator, dynamic handoff & debate flight recorder (`swarm`)
 - [x] Continuous model shadowing, live A/B drift evaluation & promotion gates (`shadow`)
+- [x] Ephemeral Firecracker microVM jail containment & memory snapshot hypervisor (`microvm`)
 
 ---
 
