@@ -29,6 +29,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/debugger"
 	"github.com/Noooblien/agentvcr/pkg/diff"
+	"github.com/Noooblien/agentvcr/pkg/distill"
 	"github.com/Noooblien/agentvcr/pkg/drift"
 	"github.com/Noooblien/agentvcr/pkg/ebpf"
 	"github.com/Noooblien/agentvcr/pkg/enclave"
@@ -4566,6 +4567,207 @@ func main() {
 
 		log.Fatal("Usage: agentvcr watermark --demo [--mermaid] [--strict] or agentvcr watermark -id <session_id> [-strict]")
 
+	case "distill":
+		distillCmd := flag.NewFlagSet("distill", flag.ExitOnError)
+		demo := distillCmd.Bool("demo", false, "Run trajectory distillation and preference alignment demo")
+		sessionsArg := distillCmd.String("sessions", "", "Pair of session IDs to distill (format: 'chosen_id,rejected_id')")
+		formatStr := distillCmd.String("format", "dpo", "Distillation dataset format: 'dpo' (HuggingFace), 'sft' (OpenAI), or 'sharegpt'")
+		minMargin := distillCmd.Float64("min-margin", 0.20, "Minimum reward margin delta (ΔR) to accept DPO pair")
+		outPath := distillCmd.String("out", "", "Output path for the generated JSONL dataset file")
+		mermaid := distillCmd.Bool("mermaid", false, "Render Mermaid diagram of distillation & alignment pipeline")
+		strict := distillCmd.Bool("strict", false, "Exit with non-zero exit code if distillation fails or reward margin is below threshold")
+		_ = distillCmd.Parse(os.Args[2:])
+
+		cfg := distill.DefaultDistillConfig()
+		cfg.Format = distill.DistillFormat(*formatStr)
+		cfg.MinRewardMargin = *minMargin
+		engine := distill.NewEngine(cfg)
+
+		if *demo {
+			now := time.Now()
+
+			// Trajectory 1: Chosen (Deterministic optimal remediation with 0 errors)
+			chosenSession := &trace.Session{
+				ID:        "distill-demo-chosen-01",
+				AgentName: "autonomous-sre-agent",
+				Status:    "completed",
+				CreatedAt: now.Add(-15 * time.Minute),
+				Metadata: map[string]string{
+					"task": "Remediate connection pool exhaustion on production database cluster",
+				},
+				Events: []trace.TraceEvent{
+					{
+						ID:        "c-0",
+						Index:     0,
+						Timestamp: now.Add(-14 * time.Minute),
+						Type:      trace.EventLLMRequest,
+						Payload: map[string]interface{}{
+							"prompt": "Investigate and resolve PostgreSQL 'remaining connection slots reserved for superusers' errors on cluster-prod-east.",
+						},
+					},
+					{
+						ID:        "c-1",
+						Index:     1,
+						Timestamp: now.Add(-13 * time.Minute),
+						Type:      trace.EventToolCall,
+						Payload: map[string]interface{}{
+							"tool":    "k8s_scale_pool",
+							"command": "kubectl apply -f pgbouncer-pool.yaml && pgbouncer -R",
+						},
+					},
+					{
+						ID:        "c-2",
+						Index:     2,
+						Timestamp: now.Add(-12 * time.Minute),
+						Type:      trace.EventToolResult,
+						Payload: map[string]interface{}{
+							"tool":   "k8s_scale_pool",
+							"output": "PgBouncer reloaded successfully. Max client connections scaled to 5,000 with transaction pooling mode active.",
+						},
+					},
+					{
+						ID:        "c-3",
+						Index:     3,
+						Timestamp: now.Add(-11 * time.Minute),
+						Type:      trace.EventLLMResponse,
+						Payload: map[string]interface{}{
+							"content": "PgBouncer transaction connection pooling active. Active backend connections reduced from 500 to 45. Connection starvation resolved with 0 downtime.",
+						},
+					},
+				},
+			}
+
+			// Trajectory 2: Rejected (Suboptimal path: restart DB abruptly causing dropped in-flight transactions)
+			rejectedSession := &trace.Session{
+				ID:        "distill-demo-rejected-02",
+				AgentName: "autonomous-sre-agent",
+				Status:    "failed",
+				CreatedAt: now.Add(-15 * time.Minute),
+				Metadata: map[string]string{
+					"task": "Remediate connection pool exhaustion on production database cluster",
+				},
+				Events: []trace.TraceEvent{
+					{
+						ID:        "r-0",
+						Index:     0,
+						Timestamp: now.Add(-14 * time.Minute),
+						Type:      trace.EventLLMRequest,
+						Payload: map[string]interface{}{
+							"prompt": "Investigate and resolve PostgreSQL 'remaining connection slots reserved for superusers' errors on cluster-prod-east.",
+						},
+					},
+					{
+						ID:        "r-1",
+						Index:     1,
+						Timestamp: now.Add(-13 * time.Minute),
+						Type:      trace.EventToolCall,
+						Payload: map[string]interface{}{
+							"tool":    "kill_all_postgres",
+							"command": "systemctl restart postgresql -f",
+						},
+					},
+					{
+						ID:        "r-2",
+						Index:     2,
+						Timestamp: now.Add(-12 * time.Minute),
+						Type:      trace.EventError,
+						Payload: map[string]interface{}{
+							"error":    "DatabaseAbruptTermination: 840 in-flight client transactions abruptly aborted. Crash recovery initiated.",
+							"is_error": true,
+						},
+					},
+					{
+						ID:        "r-3",
+						Index:     3,
+						Timestamp: now.Add(-11 * time.Minute),
+						Type:      trace.EventLLMResponse,
+						Payload: map[string]interface{}{
+							"content": "Restart command executed but 840 customer transactions failed. System state degraded.",
+						},
+					},
+				},
+			}
+
+			report := engine.DistillSessionPair(chosenSession, rejectedSession)
+
+			if *mermaid {
+				fmt.Println(distill.RenderDistillMermaid(report))
+				return
+			}
+
+			fmt.Print(distill.RenderDistillScorecard(report))
+
+			if *outPath != "" {
+				var data []byte
+				var err error
+				switch cfg.Format {
+				case distill.FormatSFT:
+					data, err = distill.ExportJSONL(report.SFTEntries)
+				case distill.FormatShareGPT:
+					var sgptRows []distill.ShareGPTRow
+					for i, sft := range report.SFTEntries {
+						sgptRows = append(sgptRows, *distill.ConvertToShareGPT(&sft, fmt.Sprintf("sgpt-%d", i)))
+					}
+					data, err = distill.ExportJSONL(sgptRows)
+				default:
+					data, err = distill.ExportJSONL(report.DPOEntries)
+				}
+				if err != nil {
+					log.Fatalf("Failed to export JSONL dataset: %v", err)
+				}
+				_ = os.WriteFile(*outPath, data, 0644)
+				fmt.Printf("📦 [AgentVCR] Exported distilled dataset to: %s (%d bytes)\n\n", *outPath, len(data))
+			}
+
+			if *strict && !report.Passed {
+				log.Fatalf("Distillation gate failed: margin=%.2f < threshold=%.2f", report.AverageRewardMargin, cfg.MinRewardMargin)
+			}
+			return
+		}
+
+		if *sessionsArg != "" {
+			parts := strings.Split(*sessionsArg, ",")
+			if len(parts) != 2 {
+				log.Fatal("Usage: agentvcr distill -sessions <chosen_id,rejected_id> [-format dpo|sft|sharegpt] [-out <file.jsonl>] [-strict]")
+			}
+			chosenSess, err := store.LoadSession(strings.TrimSpace(parts[0]))
+			if err != nil {
+				log.Fatalf("Error loading chosen session %s: %v", parts[0], err)
+			}
+			rejectedSess, err := store.LoadSession(strings.TrimSpace(parts[1]))
+			if err != nil {
+				log.Fatalf("Error loading rejected session %s: %v", parts[1], err)
+			}
+
+			report := engine.DistillSessionPair(chosenSess, rejectedSess)
+
+			if *mermaid {
+				fmt.Println(distill.RenderDistillMermaid(report))
+				return
+			}
+
+			fmt.Print(distill.RenderDistillScorecard(report))
+
+			if *outPath != "" {
+				var data []byte
+				switch cfg.Format {
+				case distill.FormatSFT:
+					data, _ = distill.ExportJSONL(report.SFTEntries)
+				default:
+					data, _ = distill.ExportJSONL(report.DPOEntries)
+				}
+				_ = os.WriteFile(*outPath, data, 0644)
+				fmt.Printf("📦 [AgentVCR] Exported distilled dataset to: %s\n\n", *outPath)
+			}
+
+			if *strict && !report.Passed {
+				os.Exit(1)
+			}
+			return
+		}
+
+		log.Fatal("Usage: agentvcr distill --demo [--format dpo|sft|sharegpt] [--out <file.jsonl>] [--mermaid] [--strict]")
+
 	default:
 		printHelp()
 	}
@@ -4638,6 +4840,7 @@ func printHelp() {
 	fmt.Println("  shadow      Continuous model shadowing, A/B drift evaluation & promotion gates")
 	fmt.Println("  microvm     Ephemeral Firecracker microVM jail containment & memory snapshots")
 	fmt.Println("  watermark   Steganographic provenance watermarking & text fingerprint attestation")
+	fmt.Println("  distill     Trajectory distillation, SFT / DPO alignment dataset synthesis")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -4709,4 +4912,7 @@ func printHelp() {
 	fmt.Println("  agentvcr microvm --demo -strict")
 	fmt.Println("  agentvcr watermark --demo -strict")
 	fmt.Println("  agentvcr watermark -id trace_1 -strict")
+	fmt.Println("  agentvcr distill --demo -strict")
+	fmt.Println("  agentvcr distill --demo -format sft -out sft_dataset.jsonl")
+	fmt.Println("  agentvcr distill -sessions trace_chosen,trace_rejected -format dpo -strict")
 }
