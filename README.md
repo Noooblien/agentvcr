@@ -96,18 +96,43 @@ Empirically assert tool sequence parity, argument stability, token bloat ratio, 
 ./bin/agentvcr determinism --demo --markdown
 ```
 
+### 7. Autonomous Agent Chaos & Fault Injection Simulation
+
+Stress-test agent recovery under downstream tool timeouts, rate limits (HTTP 429), transport drops, and upstream 503 outages:
+
+```bash
+# Run 5-scenario agent resilience benchmark
+./bin/agentvcr chaos --demo
+
+# Generate GitHub Flavored Markdown report with Mermaid sequence diagram
+./bin/agentvcr chaos --demo --markdown
+
+# Evaluate custom trajectory under targeted rate-limit fault injection
+./bin/agentvcr chaos -id trace_1760800000 -fault rate_limit -rate 0.5 --strict
+```
+
 ---
 
 ## Empirical Benchmarks & Developer Utility
 
-Zero marketing hype. Below are empirical measurements captured directly by the AgentVCR proxy and benchmark engine (`go test -v ./...` and `agentvcr determinism --demo`):
+Zero marketing hype. Below are empirical measurements captured directly by the AgentVCR proxy, benchmark engine, and chaos suite (`go test -v ./...`, `agentvcr determinism --demo`, `agentvcr chaos --demo`):
 
+### Trajectory Replay Determinism Benchmark
 | Evaluation Scenario | Tool Parity % | Argument Parity % | Token Bloat Ratio | Replay Latency P50 | Proxy Overhead | Verdict |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Exact Replay (Nominal)** | `100.0%` | `100.0%` | `1.00x (+0 tok)` | 48.0 ms (σ=72.2ms) | **24 µs / step** | `PASS (100.0/100)` |
 | **Argument Drift (Temp Var)** | `100.0%` | `0.0%` | `1.07x (+15 tok)` | 45.0 ms (σ=91.9ms) | **24 µs / step** | `BREACH (53.3/100)` |
 | **Tool Path Divergence** | `50.0%` | `100.0%` | `1.00x (+0 tok)` | 52.0 ms (σ=23.3ms) | **24 µs / step** | `DEGRADED (72.5/100)` |
 | **Token Explosion Runaway** | `100.0%` | `100.0%` | `3.44x (+1100 tok)` | 90.0 ms (σ=233.3ms) | **24 µs / step** | `DEGRADED (77.5/100)` |
+
+### Agent Chaos & Fault Injection Benchmark (`agentvcr chaos --demo`)
+| Experiment Scenario | Steps | Injected | Recovered | Recovery % | MTTR (ms) | Blast Radius | Resilience Score | Status |
+|:--------------------|:-----:|:--------:|:---------:|:----------:|:---------:|:------------:|:----------------:|:------:|
+| **Nominal Baseline** | 8 | 0 | 0 | 100.0% | 0.0 ms | +0 tok | `100.0/100` | ✅ RESILIENT |
+| **Rate Limit Storm (429)** | 8 | 1 | 1 | 100.0% | 2150.0 ms | +120 tok | `100.0/100` | ✅ RESILIENT |
+| **Tool Timeout Fallback** | 8 | 1 | 1 | 100.0% | 3350.0 ms | +180 tok | `97.9/100` | ✅ RESILIENT |
+| **Intermittent Flakiness** | 8 | 2 | 2 | 100.0% | 385.0 ms | +205 tok | `100.0/100` | ✅ RESILIENT |
+| **Cascading Outage (503)** | 8 | 2 | 0 | 0.0% | 0.0 ms | +590 tok | `0.0/100` | ❌ CRITICAL_FAILURE |
 
 ---
 
@@ -121,6 +146,7 @@ Zero marketing hype. Below are empirical measurements captured directly by the A
 | `agentvcr diff` | Semantic sequence alignment, AST comparison & regression shield | Diff scorecard & Mermaid execution DAG |
 | `agentvcr sentry` | Real-time trajectory anomaly sentry & circuit breaker | Tool loop & token velocity detection |
 | `agentvcr determinism` | Empirical trajectory replay parity & token efficiency benchmark | ANSI scorecard, Markdown table, JSON gate |
+| `agentvcr chaos` | Empirical fault injection simulation & agent resilience testing | ANSI scorecard, Markdown report, Mermaid DAG |
 | `agentvcr eval` | CI/CD assertion gates on cost, token budgets, and tool errors | Pass/fail status code for test pipelines |
 
 ---

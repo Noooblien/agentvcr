@@ -22,6 +22,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/causal"
 	"github.com/Noooblien/agentvcr/pkg/cdc"
 	"github.com/Noooblien/agentvcr/pkg/cdp"
+	"github.com/Noooblien/agentvcr/pkg/chaos"
 	"github.com/Noooblien/agentvcr/pkg/checkpoint"
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/compact"
@@ -338,6 +339,116 @@ func main() {
 		}
 
 		if *strict && !rep.Passed {
+			os.Exit(1)
+		}
+
+	case "chaos":
+		chaosCmd := flag.NewFlagSet("chaos", flag.ExitOnError)
+		demo := chaosCmd.Bool("demo", false, "Run 5-scenario autonomous agent chaos & fault injection benchmark suite")
+		sessionID := chaosCmd.String("id", "", "Trace Session ID to evaluate under chaos")
+		faultType := chaosCmd.String("fault", "rate_limit", "Fault type: rate_limit, timeout, flaky, corrupt, outage, state")
+		toolName := chaosCmd.String("tool", "", "Target tool name to inject fault into")
+		rate := chaosCmd.Float64("rate", 1.0, "Probability of fault injection (0.0 to 1.0)")
+		delay := chaosCmd.Int("delay", 3000, "Injected delay in milliseconds (for timeout faults)")
+		markdown := chaosCmd.Bool("markdown", false, "Output GitHub Flavored Markdown report with Mermaid sequence diagram")
+		mermaid := chaosCmd.Bool("mermaid", false, "Output Mermaid sequence diagram markup")
+		jsonOutput := chaosCmd.Bool("json", false, "Output raw JSON benchmark suite")
+		strict := chaosCmd.Bool("strict", false, "Exit with code 1 if any scenario fails resilience requirements")
+		_ = chaosCmd.Parse(os.Args[2:])
+
+		if *demo || *sessionID == "" {
+			suite, err := chaos.RunDemoSuite(*strict)
+			if err != nil {
+				log.Fatalf("Chaos benchmark suite error: %v", err)
+			}
+
+			if *markdown {
+				fmt.Println(chaos.RenderMarkdownReport(suite))
+			} else if *mermaid {
+				fmt.Println(chaos.RenderChaosMermaid(suite))
+			} else if *jsonOutput {
+				js, _ := chaos.RenderJSON(suite)
+				fmt.Println(js)
+			} else {
+				fmt.Print(chaos.RenderTerminalScorecard(suite))
+			}
+
+			if *strict && (suite.OverallResilience < 75.0 || suite.PassedScenarios < suite.TotalScenarios) {
+				os.Exit(1)
+			}
+			return
+		}
+
+		sess, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		var fType chaos.FaultType
+		switch *faultType {
+		case "timeout":
+			fType = chaos.FaultToolTimeout
+		case "rate_limit", "429":
+			fType = chaos.FaultRateLimit
+		case "outage", "503":
+			fType = chaos.FaultUpstreamOutage
+		case "corrupt":
+			fType = chaos.FaultPayloadCorrupt
+		case "flaky":
+			fType = chaos.FaultToolFlaky
+		case "state":
+			fType = chaos.FaultStateCorruption
+		default:
+			fType = chaos.FaultRateLimit
+		}
+
+		cfg := chaos.ChaosExperimentConfig{
+			ExperimentName: fmt.Sprintf("Chaos-%s-%s", *sessionID, *faultType),
+			SessionID:      *sessionID,
+			Rules: []chaos.FaultRule{
+				{
+					ID:            "cli-rule",
+					TargetTool:    *toolName,
+					Type:          fType,
+					Probability:   *rate,
+					InjectedDelay: time.Duration(*delay) * time.Millisecond,
+				},
+			},
+			StrictMode: *strict,
+		}
+
+		engine := chaos.NewChaosEngine(0)
+		report, err := engine.EvaluateSession(sess, cfg)
+		if err != nil {
+			log.Fatalf("Chaos evaluation failed: %v", err)
+		}
+
+		suite := &chaos.ChaosBenchmarkSuite{
+			Timestamp:            time.Now(),
+			TotalScenarios:       1,
+			PassedScenarios:      0,
+			OverallResilience:    report.ResilienceScore,
+			TotalFaultsInjected:  report.TotalFaultsInjected,
+			TotalFaultsRecovered: report.TotalFaultsRecovered,
+			OverallRecoveryRate:  report.RecoveryRatePct,
+			Reports:              []chaos.ChaosExperimentReport{*report},
+		}
+		if report.Passed {
+			suite.PassedScenarios = 1
+		}
+
+		if *markdown {
+			fmt.Println(chaos.RenderMarkdownReport(suite))
+		} else if *mermaid {
+			fmt.Println(chaos.RenderChaosMermaid(suite))
+		} else if *jsonOutput {
+			js, _ := chaos.RenderJSON(suite)
+			fmt.Println(js)
+		} else {
+			fmt.Print(chaos.RenderTerminalScorecard(suite))
+		}
+
+		if *strict && !report.Passed {
 			os.Exit(1)
 		}
 
@@ -5100,6 +5211,7 @@ func printHelp() {
 	fmt.Println("  diff        Semantic trajectory diff, sequence alignment & regression shield")
 	fmt.Println("  sentry      Continuous trajectory anomaly detection & circuit breaker engine")
 	fmt.Println("  determinism Trajectory replay determinism & token efficiency benchmark engine")
+	fmt.Println("  chaos       Agent chaos & fault injection simulation and resilience testing engine")
 	fmt.Println("  eval        Run deterministic assertion suites and SLAs on trajectories")
 	fmt.Println("  play        Interactive visual terminal playback of agent execution")
 	fmt.Println("  snapshot    Capture or restore deterministic workspace filesystem state")
@@ -5168,6 +5280,8 @@ func printHelp() {
 	fmt.Println("  agentvcr fork -id trace_1760800000 -step 4")
 	fmt.Println("  agentvcr diff --demo -strict --mermaid")
 	fmt.Println("  agentvcr diff -base trace_1 -target trace_1_fork -tolerance 0.85")
+	fmt.Println("  agentvcr chaos --demo [--markdown] [--mermaid] [--strict]")
+	fmt.Println("  agentvcr chaos -id trace_1 -fault rate_limit -rate 0.5")
 	fmt.Println("  agentvcr eval -id trace_1 -no-errors -max-tokens 5000")
 	fmt.Println("  agentvcr eval --demo -strict")
 	fmt.Println("  agentvcr eval -id trace_1 -judge -strict")
