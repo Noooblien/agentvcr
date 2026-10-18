@@ -148,6 +148,7 @@ client = OpenAI(
 - [x] Continuous model shadowing, live A/B drift evaluation & promotion gates (`shadow`)
 - [x] Ephemeral Firecracker microVM jail containment & memory snapshot hypervisor (`microvm`)
 - [x] Steganographic provenance watermarking & text fingerprint attestation engine (`watermark`)
+- [x] Trajectory distillation & alignment dataset synthesizer (`distill`)
 
 ---
 

@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Trajectory Distillation & Alignment Dataset Synthesizer (`pkg/distill`)**: Distills multi-turn agent flight recordings into clean, token-efficient fine-tuning (SFT) and preference alignment (DPO) datasets for training smaller specialist models from frontier agent trajectories.
+- **Automated DPO Preference Pairing (`pkg/distill/engine.go`)**: Synthesizes `chosen` vs `rejected` trajectory pairs from successful and failed/forked runs, automatically identifying trajectory divergence points and calculating objective reward margin deltas ($\Delta R$).
+- **Multi-Format Dataset Exporters**: Full serialization support for HuggingFace Direct Preference Optimization JSONL (`dpo`), OpenAI Chat Completion fine-tuning JSONL (`sft`), and multi-turn ShareGPT format (`sharegpt`).
+- **Interactive Distill Scorecard & Mermaid Visualizer (`agentvcr distill --demo`)**: Rich ANSI terminal scorecard tracking dataset synthesis metrics, context compression ratios, reward margins, and Mermaid pipeline DAGs.
 - **Steganographic Provenance Watermarking & Text Fingerprint Attestation Engine (`pkg/watermark`)**: Invisible zero-width Unicode (`\u200B`, `\u200C`, `\u200D`) bit-level steganographic embedding, cryptographic HMAC-SHA256 signature attestation, and provenance verification for generated agent outputs.
 - **Dual Provenance Strategies (`pkg/watermark/engine.go`)**: Seamless support for zero-width invisible Unicode embedding (`zero_width_unicode`) and structured HTML/Markdown comment headers (`header_signature`) with automatic tamper and mutation detection.
 - **Trajectory Watermark Forensics & Audit Report (`pkg/watermark/types.go`)**: Session-wide scanner verifying model provenance, agent origin, session lineage, bit-level integrity confidence (0.0-10.0), and cryptographic signature validity.
