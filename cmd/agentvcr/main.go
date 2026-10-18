@@ -75,6 +75,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/vision"
 	"github.com/Noooblien/agentvcr/pkg/voice"
 	"github.com/Noooblien/agentvcr/pkg/wasi"
+	"github.com/Noooblien/agentvcr/pkg/watermark"
 	"github.com/Noooblien/agentvcr/pkg/zkp"
 )
 
@@ -4417,6 +4418,154 @@ func main() {
 
 		log.Fatal("Usage: agentvcr microvm --demo [--trap-breach] [--mermaid] [--strict]")
 
+	case "watermark":
+		wmCmd := flag.NewFlagSet("watermark", flag.ExitOnError)
+		demo := wmCmd.Bool("demo", false, "Run steganographic provenance watermarking & attestation demo")
+		sessionID := wmCmd.String("id", "", "Trace Session ID to audit for watermarks and provenance attestation")
+		embedText := wmCmd.String("embed", "", "Text string to embed cryptographic watermark into")
+		extractText := wmCmd.String("extract", "", "Text string to extract and verify watermark from")
+		strategyStr := wmCmd.String("strategy", "zero_width_unicode", "Watermark strategy: zero_width_unicode or header_signature")
+		mermaid := wmCmd.Bool("mermaid", false, "Render Mermaid diagram of watermark provenance attestation")
+		strict := wmCmd.Bool("strict", false, "Exit with non-zero exit code if tampering detected or audit fails")
+		_ = wmCmd.Parse(os.Args[2:])
+
+		cfg := watermark.DefaultWatermarkConfig()
+		cfg.Strategy = watermark.WatermarkStrategy(*strategyStr)
+		engine := watermark.NewEngine(cfg)
+
+		if *demo {
+			now := time.Now()
+			demoSession := &trace.Session{
+				ID:        "watermark-demo-session-01",
+				AgentName: "autonomous-code-generator",
+				CreatedAt: now.Add(-10 * time.Minute),
+				Metadata: map[string]string{
+					"task": "Synthesize high-performance cryptographic key derivation function",
+				},
+				Events: []trace.TraceEvent{
+					{
+						ID:        "wm-evt-0",
+						Index:     0,
+						Timestamp: now.Add(-9 * time.Minute),
+						Type:      trace.EventLLMRequest,
+						Payload: map[string]interface{}{
+							"prompt": "Synthesize Argon2id password hashing function in Go.",
+						},
+					},
+					{
+						ID:        "wm-evt-1",
+						Index:     1,
+						Timestamp: now.Add(-8 * time.Minute),
+						Type:      trace.EventLLMResponse,
+						Payload: map[string]interface{}{
+							"content": "Here is the production implementation. Function DeriveKey computes 64-byte key using Argon2id with 64MB memory ceiling.",
+						},
+					},
+					{
+						ID:        "wm-evt-2",
+						Index:     2,
+						Timestamp: now.Add(-7 * time.Minute),
+						Type:      trace.EventToolCall,
+						Payload: map[string]interface{}{
+							"tool": "go_build",
+							"args": map[string]interface{}{"path": "./pkg/kdf"},
+						},
+					},
+					{
+						ID:        "wm-evt-3",
+						Index:     3,
+						Timestamp: now.Add(-6 * time.Minute),
+						Type:      trace.EventLLMResponse,
+						Payload: map[string]interface{}{
+							"content": "All tests passed with 0 allocations. Cryptographic provenance verified across execution trajectory.",
+						},
+					},
+				},
+			}
+
+			// Embed watermarks into the LLM responses
+			for i := range demoSession.Events {
+				if demoSession.Events[i].Type == trace.EventLLMResponse {
+					text, _ := demoSession.Events[i].Payload["content"].(string)
+					payload := engine.GeneratePayload(demoSession.ID, demoSession.AgentName, "gpt-4o")
+					watermarked, err := engine.EmbedWatermark(text, payload)
+					if err == nil {
+						demoSession.Events[i].Payload["content"] = watermarked
+					}
+				}
+			}
+
+			report := engine.AuditTrajectory(demoSession)
+
+			if *mermaid {
+				fmt.Println(watermark.RenderWatermarkMermaid(report))
+				return
+			}
+
+			fmt.Print(watermark.RenderWatermarkScorecard(report))
+
+			if *strict && !report.Passed {
+				log.Fatalf("Watermark verification failed: status=%s, score=%.1f", report.Status, report.OverallIntegrityScore)
+			}
+			return
+		}
+
+		if *embedText != "" {
+			payload := engine.GeneratePayload("manual-session", "manual-agent", "gpt-4o")
+			watermarked, err := engine.EmbedWatermark(*embedText, payload)
+			if err != nil {
+				log.Fatalf("Watermark embedding failed: %v", err)
+			}
+			fmt.Printf("🔒 Embedded Watermarked Output (len=%d):\n%s\n", len(watermarked), watermarked)
+			return
+		}
+
+		if *extractText != "" {
+			res := engine.ExtractWatermark(*extractText)
+			if !res.Detected {
+				fmt.Println("❌ No watermark detected in input text.")
+				if *strict {
+					os.Exit(1)
+				}
+				return
+			}
+			fmt.Printf("✅ Watermark Detected!\n")
+			fmt.Printf("   Strategy:   %s\n", res.Strategy)
+			fmt.Printf("   Tampered:   %v\n", res.Tampered)
+			fmt.Printf("   Confidence: %.1f%%\n", res.BitConfidence*100)
+			if res.Payload != nil {
+				fmt.Printf("   Org ID:     %s\n", res.Payload.OrgID)
+				fmt.Printf("   Session ID: %s\n", res.Payload.SessionID)
+				fmt.Printf("   Agent ID:   %s\n", res.Payload.AgentID)
+				fmt.Printf("   Model:      %s\n", res.Payload.Model)
+				fmt.Printf("   Hash:       %s\n", res.Payload.PayloadHash)
+				fmt.Printf("   Signature:  %s\n", res.Payload.Signature)
+			}
+			if *strict && res.Tampered {
+				os.Exit(1)
+			}
+			return
+		}
+
+		if *sessionID != "" {
+			session, err := store.LoadSession(*sessionID)
+			if err != nil {
+				log.Fatalf("Error loading session %s: %v", *sessionID, err)
+			}
+			report := engine.AuditTrajectory(session)
+			if *mermaid {
+				fmt.Println(watermark.RenderWatermarkMermaid(report))
+				return
+			}
+			fmt.Print(watermark.RenderWatermarkScorecard(report))
+			if *strict && !report.Passed {
+				os.Exit(1)
+			}
+			return
+		}
+
+		log.Fatal("Usage: agentvcr watermark --demo [--mermaid] [--strict] or agentvcr watermark -id <session_id> [-strict]")
+
 	default:
 		printHelp()
 	}
@@ -4488,6 +4637,7 @@ func printHelp() {
 	fmt.Println("  swarm       Multi-agent swarm orchestrator, dynamic handoff & debate flight recorder")
 	fmt.Println("  shadow      Continuous model shadowing, A/B drift evaluation & promotion gates")
 	fmt.Println("  microvm     Ephemeral Firecracker microVM jail containment & memory snapshots")
+	fmt.Println("  watermark   Steganographic provenance watermarking & text fingerprint attestation")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -4557,4 +4707,6 @@ func printHelp() {
 	fmt.Println("  agentvcr swarm --demo --topology debate -strict")
 	fmt.Println("  agentvcr shadow --demo -strict")
 	fmt.Println("  agentvcr microvm --demo -strict")
+	fmt.Println("  agentvcr watermark --demo -strict")
+	fmt.Println("  agentvcr watermark -id trace_1 -strict")
 }
