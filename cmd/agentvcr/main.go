@@ -28,6 +28,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/consensus"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/debugger"
+	"github.com/Noooblien/agentvcr/pkg/determinism"
 	"github.com/Noooblien/agentvcr/pkg/diff"
 	"github.com/Noooblien/agentvcr/pkg/distill"
 	"github.com/Noooblien/agentvcr/pkg/drift"
@@ -257,6 +258,86 @@ func main() {
 
 		fmt.Print(sentry.RenderSentryScorecard(verdict, *sessionID))
 		if *strict && verdict.Action == sentry.ActionTripCircuitBreaker {
+			os.Exit(1)
+		}
+
+	case "determinism":
+		detCmd := flag.NewFlagSet("determinism", flag.ExitOnError)
+		baseID := detCmd.String("base", "", "Baseline trace session ID")
+		targetID := detCmd.String("target", "", "Target replay trace session ID")
+		demo := detCmd.Bool("demo", false, "Run comprehensive 4-scenario replay determinism & token benchmark")
+		strict := detCmd.Bool("strict", false, "Exit with code 1 if determinism assertion gate fails")
+		markdown := detCmd.Bool("markdown", false, "Render GitHub Markdown benchmark summary table")
+		jsonOutput := detCmd.Bool("json", false, "Output structured JSON report")
+		minScore := detCmd.Float64("min-score", 85.0, "Minimum required determinism score (0.0 to 100.0)")
+		minParity := detCmd.Float64("min-parity", 90.0, "Minimum required tool call sequence parity percent")
+		maxBloat := detCmd.Float64("max-bloat", 1.20, "Maximum allowed token bloat ratio")
+		_ = detCmd.Parse(os.Args[2:])
+
+		cfg := determinism.DefaultConfig()
+		cfg.MinScore = *minScore
+		cfg.MinToolParity = *minParity
+		cfg.MaxTokenBloatRatio = *maxBloat
+		cfg.EnforceStrict = *strict
+		engine := determinism.NewEngine(cfg)
+
+		if *demo {
+			scenarios := determinism.GenerateDemoScenarios()
+			fmt.Printf("\n\033[1;36m========================================================================================\033[0m\n")
+			fmt.Printf("   \033[1;37mAGENTVCR TRAJECTORY REPLAY DETERMINISM & TOKEN EFFICIENCY BENCHMARK (%d SCENARIOS)\033[0m\n", len(scenarios))
+			fmt.Printf("\033[1;36m========================================================================================\033[0m\n")
+
+			passedCount := 0
+			for i, sc := range scenarios {
+				fmt.Printf("\n\033[1;33m[Scenario %d/%d]\033[0m \033[1m%s\033[0m: %s\n", i+1, len(scenarios), sc.Name, sc.Description)
+				rep, err := engine.Evaluate(sc.Baseline, sc.Target)
+				if err != nil {
+					log.Fatalf("Error evaluating scenario %s: %v", sc.Name, err)
+				}
+				if *markdown {
+					fmt.Println(determinism.RenderMarkdown(rep))
+				} else if *jsonOutput {
+					js, _ := determinism.RenderJSON(rep)
+					fmt.Println(js)
+				} else {
+					fmt.Print(determinism.RenderScorecard(rep))
+				}
+				if rep.Passed {
+					passedCount++
+				}
+			}
+			fmt.Printf("\n\033[1;32m✓ Determinism Benchmark Complete.\033[0m %d/%d scenarios met production determinism criteria.\n\n", passedCount, len(scenarios))
+			return
+		}
+
+		if *baseID == "" || *targetID == "" {
+			log.Fatal("Usage: agentvcr determinism -base <session_id> -target <session_id> or agentvcr determinism --demo")
+		}
+
+		baseSess, err := store.LoadSession(*baseID)
+		if err != nil {
+			log.Fatalf("Error loading baseline session %s: %v", *baseID, err)
+		}
+		targetSess, err := store.LoadSession(*targetID)
+		if err != nil {
+			log.Fatalf("Error loading target session %s: %v", *targetID, err)
+		}
+
+		rep, err := engine.Evaluate(baseSess, targetSess)
+		if err != nil {
+			log.Fatalf("Evaluation error: %v", err)
+		}
+
+		if *markdown {
+			fmt.Println(determinism.RenderMarkdown(rep))
+		} else if *jsonOutput {
+			js, _ := determinism.RenderJSON(rep)
+			fmt.Println(js)
+		} else {
+			fmt.Print(determinism.RenderScorecard(rep))
+		}
+
+		if *strict && !rep.Passed {
 			os.Exit(1)
 		}
 
@@ -5018,6 +5099,7 @@ func printHelp() {
 	fmt.Println("  fork        Branch an execution trace at an exact step for re-testing")
 	fmt.Println("  diff        Semantic trajectory diff, sequence alignment & regression shield")
 	fmt.Println("  sentry      Continuous trajectory anomaly detection & circuit breaker engine")
+	fmt.Println("  determinism Trajectory replay determinism & token efficiency benchmark engine")
 	fmt.Println("  eval        Run deterministic assertion suites and SLAs on trajectories")
 	fmt.Println("  play        Interactive visual terminal playback of agent execution")
 	fmt.Println("  snapshot    Capture or restore deterministic workspace filesystem state")
