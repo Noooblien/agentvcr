@@ -2052,10 +2052,11 @@ func main() {
 
 	case "mcp":
 		mcpCmd := flag.NewFlagSet("mcp", flag.ExitOnError)
-		action := mcpCmd.String("action", "demo", "MCP action: 'demo', 'audit', 'mock', or 'fuzz'")
+		action := mcpCmd.String("action", "demo", "MCP action: 'demo', 'audit', 'mock', 'fuzz', or 'router'")
 		sessionID := mcpCmd.String("id", "", "Trace Session ID to audit or seed mock from")
 		strict := mcpCmd.Bool("strict", false, "Exit with non-zero exit code if MCP security violations or low fuzz resilience detected")
-		mermaid := mcpCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of MCP fuzzing matrix")
+		mermaid := mcpCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of MCP fuzzing matrix or router topology")
+		policyStr := mcpCmd.String("policy", "round_robin", "Router load balancing policy: 'round_robin', 'least_connections', 'latency_optimized', 'random'")
 		_ = mcpCmd.Parse(os.Args[2:])
 
 		switch *action {
@@ -2200,8 +2201,80 @@ func main() {
 			}
 			return
 
+		case "router":
+			routerCfg := mcp.DefaultRouterConfig()
+			if *policyStr != "" {
+				routerCfg.Policy = mcp.LoadBalancingPolicy(*policyStr)
+			}
+			router := mcp.NewRouter(routerCfg)
+
+			srvPrimary := &mcp.UpstreamServer{
+				ID:             "srv-github-primary",
+				Name:           "GitHub API Primary Gateway",
+				Endpoint:       "mcp://github.internal:8080",
+				Weight:         2,
+				ServerInstance: mcp.NewVirtualMCPServer("GitHub-Primary", "1.0.0"),
+			}
+			srvPrimary.ServerInstance.RegisterTool(mcp.Tool{
+				Name:        "github_create_issue",
+				Description: "Create a GitHub issue",
+				InputSchema: mcp.ToolInputSchema{Type: "object"},
+			})
+
+			srvBackup := &mcp.UpstreamServer{
+				ID:             "srv-github-backup",
+				Name:           "GitHub API Replica Gateway",
+				Endpoint:       "mcp://github-replica.internal:8080",
+				Weight:         1,
+				ServerInstance: mcp.NewVirtualMCPServer("GitHub-Backup", "1.0.0"),
+			}
+			srvBackup.ServerInstance.RegisterTool(mcp.Tool{
+				Name:        "github_create_issue",
+				Description: "Create a GitHub issue",
+				InputSchema: mcp.ToolInputSchema{Type: "object"},
+			})
+
+			srvWorker := &mcp.UpstreamServer{
+				ID:             "srv-bash-worker",
+				Name:           "Local Shell Sandbox Worker",
+				Endpoint:       "unix:///var/run/mcp-bash.sock",
+				Weight:         1,
+				ServerInstance: mcp.NewVirtualMCPServer("Bash-Worker", "1.0.0"),
+			}
+			srvWorker.ServerInstance.RegisterTool(mcp.Tool{
+				Name:        "bash_exec",
+				Description: "Execute safe shell script",
+				InputSchema: mcp.ToolInputSchema{Type: "object"},
+			})
+
+			router.RegisterServer(srvPrimary)
+			router.RegisterServer(srvBackup)
+			router.RegisterServer(srvWorker)
+
+			router.AddRoute("github_*", "srv-github-primary", "srv-github-backup")
+			router.AddRoute("bash_*", "srv-bash-worker")
+
+			// Dispatch simulated tool calls
+			req1 := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"github_create_issue","arguments":{"title":"Bug report"}}}`)
+			req2 := []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"bash_exec","arguments":{"command":"uptime"}}}`)
+			req3 := []byte(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"github_create_issue","arguments":{"title":"Feature request"}}}`)
+
+			_, _, _ = router.DispatchMessage(req1)
+			_, _, _ = router.DispatchMessage(req2)
+			_, _, _ = router.DispatchMessage(req3)
+
+			report := router.Audit()
+
+			if *mermaid {
+				fmt.Println(mcp.RenderRouterMermaid(report))
+				return
+			}
+
+			fmt.Print(mcp.RenderRouterScorecard(report))
+			return
+
 		default:
-			log.Fatalf("Unknown mcp action '%s'. Use 'demo', 'audit', or 'fuzz'.", *action)
+			log.Fatalf("Unknown mcp action '%s'. Use 'demo', 'audit', 'fuzz', or 'router'.", *action)
 		}
 
 	case "compact":
