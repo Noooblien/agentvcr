@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Model Context Protocol (MCP) Multi-Server Router, Load Balancer & Dynamic Circuit Breaker (`pkg/mcp/router.go`)**: High-performance JSON-RPC 2.0 routing and dispatch layer clustering multiple upstream MCP servers with configurable load balancing policies (`round_robin`, `least_connections`, `latency_optimized`, `random`).
+- **Dynamic Per-Server Circuit Breakers & Auto-Recovery**: Automatic failure tracking with configurable consecutive failure tripping thresholds, cooldown backoff intervals, and half-open exploratory probes that safely reintroduce recovered upstream servers to the active pool.
+- **Pattern-Based Namespace Routing & Automatic Failover**: Fine-grained prefix and wildcard matching (`github_*`, `bash_*`, `*`) with multi-target server pools and automatic failover retries across healthy candidates.
+- **Cluster Telemetry, Terminal Scorecard & Mermaid Topology Visualizer (`agentvcr mcp -action router`)**: Thread-safe telemetry tracking active connections, routed requests, failure counts, and average RTT with rich ANSI scorecard reporting and Mermaid cluster DAG generation.
 - **Standardized Evaluation Harness & Unbiased Pass@k Benchmarking Engine (`pkg/harness`)**: Multi-standard benchmark execution harness for autonomous software engineering and web agents with native support for SWE-bench Lite (`swe_bench`), HumanEval (`humaneval`), and WebArena (`webarena`).
 - **Unbiased Pass@k Metric Estimator (`pkg/harness/engine.go`)**: Mathematically rigorous pass@$k$ estimator ($k=1, 5, 10$) evaluating agent problem-solving coverage across multi-sample trials with test-patch verification.
 - **Task Specification & Verification Matrix (`pkg/harness/types.go`)**: Tracks task fail-to-pass and pass-to-pass suites, step counts, patch synthesis, execution time, token consumption, and cost tracking.
