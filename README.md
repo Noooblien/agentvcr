@@ -151,6 +151,7 @@ client = OpenAI(
 - [x] Trajectory distillation & alignment dataset synthesizer (`distill`)
 - [x] Standardized evaluation harness & unbiased pass@k benchmarking engine (`harness`)
 - [x] Model Context Protocol (MCP) multi-server router, load balancer & dynamic circuit breaker (`mcp -action router`)
+- [x] Semantic trajectory diff, sequence alignment & regression shield (`diff`)
 
 ---
 
