@@ -40,6 +40,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/gateway"
 	"github.com/Noooblien/agentvcr/pkg/gossip"
 	"github.com/Noooblien/agentvcr/pkg/graph"
+	"github.com/Noooblien/agentvcr/pkg/harness"
 	"github.com/Noooblien/agentvcr/pkg/heal"
 	"github.com/Noooblien/agentvcr/pkg/leaderboard"
 	"github.com/Noooblien/agentvcr/pkg/lineage"
@@ -4768,6 +4769,102 @@ func main() {
 
 		log.Fatal("Usage: agentvcr distill --demo [--format dpo|sft|sharegpt] [--out <file.jsonl>] [--mermaid] [--strict]")
 
+	case "harness":
+		harnessCmd := flag.NewFlagSet("harness", flag.ExitOnError)
+		demo := harnessCmd.Bool("demo", false, "Run standardized evaluation harness & pass@k benchmark demo")
+		standardStr := harnessCmd.String("standard", "swe_bench", "Benchmark standard: 'swe_bench', 'humaneval', 'webarena', or 'agentbench'")
+		minPassAt1 := harnessCmd.Float64("min-pass1", 0.40, "Minimum Pass@1 threshold to pass quality gate")
+		samples := harnessCmd.Int("samples", 3, "Number of sample attempts per task for pass@k estimation")
+		mermaid := harnessCmd.Bool("mermaid", false, "Render Mermaid diagram of pass@k evaluation pipeline")
+		strict := harnessCmd.Bool("strict", false, "Exit with non-zero exit code if quality gate fails")
+		_ = harnessCmd.Parse(os.Args[2:])
+
+		cfg := harness.DefaultHarnessConfig()
+		cfg.Standard = harness.BenchmarkStandard(*standardStr)
+		cfg.MinPassRateAt1 = *minPassAt1
+		cfg.NumSamples = *samples
+		engine := harness.NewEngine(cfg)
+
+		if *demo {
+			now := time.Now()
+
+			// Register 3 realistic SWE-bench Lite tasks
+			task1 := harness.TaskSpec{
+				TaskID:          "django__django-14016",
+				Standard:        harness.BenchmarkSWEBench,
+				Repository:      "django/django",
+				ProblemStatement: "TypeError: 'dict_keys' object is not subscriptable in Q() expressions",
+				FailToPassTests: []string{"test_q_dict_keys_subscript"},
+				PassToPassTests: []string{"test_q_basic"},
+			}
+			task2 := harness.TaskSpec{
+				TaskID:          "pytest-dev__pytest-7432",
+				Standard:        harness.BenchmarkSWEBench,
+				Repository:      "pytest-dev/pytest",
+				ProblemStatement: "skip location reporting breakdown when mark.skip is called inside fixture",
+				FailToPassTests: []string{"test_skip_location_fixture"},
+				PassToPassTests: []string{"test_skip_basic"},
+			}
+			task3 := harness.TaskSpec{
+				TaskID:          "psf__requests-2317",
+				Standard:        harness.BenchmarkSWEBench,
+				Repository:      "psf/requests",
+				ProblemStatement: "method string in Request must handle binary byte strings without decoding crash",
+				FailToPassTests: []string{"test_binary_method_string"},
+				PassToPassTests: []string{"test_requests_get"},
+			}
+			engine.RegisterTask(task1)
+			engine.RegisterTask(task2)
+			engine.RegisterTask(task3)
+
+			// Generate sample trials
+			sessPass1 := &trace.Session{
+				ID: "trial-t1-pass", AgentName: "agentvcr-lead-coder", Status: "completed",
+				Events: []trace.TraceEvent{
+					{ID: "e0", Type: trace.EventLLMRequest, Timestamp: now, Payload: map[string]interface{}{"prompt": "Fix dict_keys in Q", "tokens": 140}},
+					{ID: "e1", Type: trace.EventToolCall, Timestamp: now.Add(time.Second), Payload: map[string]interface{}{"tool": "patch", "patch": "diff --git a/query_utils.py\n+ list(keys)[0]"}},
+					{ID: "e2", Type: trace.EventLLMResponse, Timestamp: now.Add(2 * time.Second), Payload: map[string]interface{}{"content": "Resolved subscript issue.", "tokens": 70}},
+				},
+			}
+			sessPass2 := &trace.Session{
+				ID: "trial-t2-pass", AgentName: "agentvcr-lead-coder", Status: "completed",
+				Events: []trace.TraceEvent{
+					{ID: "e0", Type: trace.EventLLMRequest, Timestamp: now, Payload: map[string]interface{}{"prompt": "Fix skip location", "tokens": 160}},
+					{ID: "e1", Type: trace.EventToolCall, Timestamp: now.Add(time.Second), Payload: map[string]interface{}{"tool": "patch", "patch": "diff --git a/skipping.py\n+ report_loc(item)"}},
+					{ID: "e2", Type: trace.EventLLMResponse, Timestamp: now.Add(2 * time.Second), Payload: map[string]interface{}{"content": "Resolved fixture skip reporting.", "tokens": 85}},
+				},
+			}
+			sessFail := &trace.Session{
+				ID: "trial-fail", AgentName: "agentvcr-lead-coder", Status: "failed",
+				Events: []trace.TraceEvent{
+					{ID: "e0", Type: trace.EventLLMRequest, Timestamp: now, Payload: map[string]interface{}{"prompt": "Investigate binary string", "tokens": 120}},
+					{ID: "e1", Type: trace.EventError, Timestamp: now.Add(time.Second), Payload: map[string]interface{}{"error": "UnicodeDecodeError: 'ascii' codec can't decode byte", "is_error": true}},
+				},
+			}
+
+			trialsMap := map[string][]*trace.Session{
+				"django__django-14016":     {sessPass1, sessPass1, sessPass1}, // 3/3 passed
+				"pytest-dev__pytest-7432":  {sessPass2, sessPass2, sessFail},  // 2/3 passed
+				"psf__requests-2317":       {sessPass1, sessFail, sessFail},   // 1/3 passed
+			}
+
+			report := engine.RunBenchmark(trialsMap)
+
+			if *mermaid {
+				fmt.Println(harness.RenderHarnessMermaid(report))
+				return
+			}
+
+			fmt.Print(harness.RenderHarnessScorecard(report))
+
+			if *strict && !report.GatePassed {
+				log.Fatalf("Benchmark quality gate failed: Pass@1=%.1f%% < threshold=%.1f%%", report.MeanPassAt1*100, cfg.MinPassRateAt1*100)
+			}
+			return
+		}
+
+		log.Fatal("Usage: agentvcr harness --demo [--standard swe_bench|humaneval|webarena] [--min-pass1 0.40] [--mermaid] [--strict]")
+
 	default:
 		printHelp()
 	}
@@ -4841,6 +4938,7 @@ func printHelp() {
 	fmt.Println("  microvm     Ephemeral Firecracker microVM jail containment & memory snapshots")
 	fmt.Println("  watermark   Steganographic provenance watermarking & text fingerprint attestation")
 	fmt.Println("  distill     Trajectory distillation, SFT / DPO alignment dataset synthesis")
+	fmt.Println("  harness     Standardized benchmark harness, SWE-bench & pass@k evaluator")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -4915,4 +5013,6 @@ func printHelp() {
 	fmt.Println("  agentvcr distill --demo -strict")
 	fmt.Println("  agentvcr distill --demo -format sft -out sft_dataset.jsonl")
 	fmt.Println("  agentvcr distill -sessions trace_chosen,trace_rejected -format dpo -strict")
+	fmt.Println("  agentvcr harness --demo -strict")
+	fmt.Println("  agentvcr harness --demo -standard swe_bench -min-pass1 0.40")
 }
