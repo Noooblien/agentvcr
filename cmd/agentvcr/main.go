@@ -37,6 +37,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/enclave"
 	"github.com/Noooblien/agentvcr/pkg/eval"
 	"github.com/Noooblien/agentvcr/pkg/finops"
+	"github.com/Noooblien/agentvcr/pkg/flamegraph"
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
 	"github.com/Noooblien/agentvcr/pkg/gateway"
@@ -450,6 +451,73 @@ func main() {
 
 		if *strict && !report.Passed {
 			os.Exit(1)
+		}
+
+	case "flame":
+		flameCmd := flag.NewFlagSet("flame", flag.ExitOnError)
+		sessionID := flameCmd.String("id", "", "Trace session ID to analyze")
+		demo := flameCmd.Bool("demo", false, "Run demonstration profile across realistic agent scenarios")
+		scenario := flameCmd.String("scenario", "swe", "Demo scenario: swe | research | runaway")
+		format := flameCmd.String("format", "terminal", "Output format: terminal | speedscope | chrome | mermaid | markdown | json")
+		metric := flameCmd.String("metric", "latency", "Primary metric prioritization: latency | tokens")
+		exportPath := flameCmd.String("export", "", "Optional file path to write exported format")
+		_ = flameCmd.Parse(os.Args[2:])
+
+		var profile *flamegraph.FlameProfile
+
+		if *demo || *sessionID == "" {
+			if !*demo && *sessionID == "" {
+				fmt.Printf("ℹ️  No session ID provided. Running flamegraph demo (--demo)...\n")
+			}
+			session := flamegraph.GenerateDemoSession(*scenario)
+			var err error
+			profile, err = flamegraph.BuildProfile(session)
+			if err != nil {
+				log.Fatalf("Error building demo flame profile: %v", err)
+			}
+		} else {
+			session, err := store.LoadSession(*sessionID)
+			if err != nil {
+				log.Fatalf("Error loading session %s: %v", *sessionID, err)
+			}
+			profile, err = flamegraph.BuildProfile(session)
+			if err != nil {
+				log.Fatalf("Error constructing flame profile: %v", err)
+			}
+		}
+
+		var output string
+		switch flamegraph.ExportFormat(strings.ToLower(*format)) {
+		case flamegraph.FormatSpeedscope:
+			bytes, err := flamegraph.ExportSpeedscope(profile)
+			if err != nil {
+				log.Fatalf("Failed to export Speedscope profile: %v", err)
+			}
+			output = string(bytes)
+		case flamegraph.FormatChrome:
+			bytes, err := flamegraph.ExportChromeTrace(profile)
+			if err != nil {
+				log.Fatalf("Failed to export Chrome trace: %v", err)
+			}
+			output = string(bytes)
+		case flamegraph.FormatMermaid:
+			output = flamegraph.RenderMermaidGantt(profile)
+		case flamegraph.FormatMarkdown:
+			output = flamegraph.RenderMarkdownReport(profile)
+		case flamegraph.FormatJSON:
+			bytes, _ := json.MarshalIndent(profile, "", "  ")
+			output = string(bytes)
+		default:
+			output = flamegraph.RenderTerminalFlame(profile, *metric)
+		}
+
+		if *exportPath != "" {
+			if err := os.WriteFile(*exportPath, []byte(output), 0644); err != nil {
+				log.Fatalf("Failed to write output to %s: %v", *exportPath, err)
+			}
+			fmt.Printf("✨ Profile successfully exported to %s\n", *exportPath)
+		} else {
+			fmt.Println(output)
 		}
 
 	case "eval":
@@ -5212,6 +5280,7 @@ func printHelp() {
 	fmt.Println("  sentry      Continuous trajectory anomaly detection & circuit breaker engine")
 	fmt.Println("  determinism Trajectory replay determinism & token efficiency benchmark engine")
 	fmt.Println("  chaos       Agent chaos & fault injection simulation and resilience testing engine")
+	fmt.Println("  flame       Hierarchical execution flamegraph & critical path latency/token profiler")
 	fmt.Println("  eval        Run deterministic assertion suites and SLAs on trajectories")
 	fmt.Println("  play        Interactive visual terminal playback of agent execution")
 	fmt.Println("  snapshot    Capture or restore deterministic workspace filesystem state")
@@ -5282,6 +5351,8 @@ func printHelp() {
 	fmt.Println("  agentvcr diff -base trace_1 -target trace_1_fork -tolerance 0.85")
 	fmt.Println("  agentvcr chaos --demo [--markdown] [--mermaid] [--strict]")
 	fmt.Println("  agentvcr chaos -id trace_1 -fault rate_limit -rate 0.5")
+	fmt.Println("  agentvcr flame --demo [--format terminal|speedscope|chrome|mermaid|markdown]")
+	fmt.Println("  agentvcr flame -id trace_1 -format speedscope -export trace_1.speedscope.json")
 	fmt.Println("  agentvcr eval -id trace_1 -no-errors -max-tokens 5000")
 	fmt.Println("  agentvcr eval --demo -strict")
 	fmt.Println("  agentvcr eval -id trace_1 -judge -strict")

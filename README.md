@@ -111,6 +111,24 @@ Stress-test agent recovery under downstream tool timeouts, rate limits (HTTP 429
 ./bin/agentvcr chaos -id trace_1760800000 -fault rate_limit -rate 0.5 --strict
 ```
 
+### 8. Hierarchical Execution Flamegraph & Critical Path Profiler
+
+Profile complex multi-turn trajectories across LLM inference, tool execution, and prompt ingestion:
+
+```bash
+# Render ANSI terminal execution flame tree with critical path callouts
+./bin/agentvcr flame --demo
+
+# Export Speedscope JSON profile for interactive flame chart on speedscope.app
+./bin/agentvcr flame --demo -format speedscope -export trace.speedscope.json
+
+# Export Chrome Tracing / Perfetto timeline for chrome://tracing
+./bin/agentvcr flame --demo -format chrome -export trace.chrome.json
+
+# Prioritize flame tree by token consumption rather than latency
+./bin/agentvcr flame --demo -metric tokens
+```
+
 ---
 
 ## Empirical Benchmarks & Developer Utility
@@ -147,6 +165,7 @@ Zero marketing hype. Below are empirical measurements captured directly by the A
 | `agentvcr sentry` | Real-time trajectory anomaly sentry & circuit breaker | Tool loop & token velocity detection |
 | `agentvcr determinism` | Empirical trajectory replay parity & token efficiency benchmark | ANSI scorecard, Markdown table, JSON gate |
 | `agentvcr chaos` | Empirical fault injection simulation & agent resilience testing | ANSI scorecard, Markdown report, Mermaid DAG |
+| `agentvcr flame` | Hierarchical execution flamegraph & critical path latency/token profiler | ANSI tree, Speedscope JSON, Chrome Tracing, Mermaid Gantt |
 | `agentvcr eval` | CI/CD assertion gates on cost, token budgets, and tool errors | Pass/fail status code for test pipelines |
 
 ---
