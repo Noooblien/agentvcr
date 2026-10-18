@@ -144,6 +144,7 @@ client = OpenAI(
 - [x] Model Context Protocol (MCP) schema fuzzing & mutation testing harness (`mcp -action fuzz`)
 - [x] LLM-as-a-Judge multi-dimensional rubric trajectory evaluation & grading engine (`eval -judge`)
 - [x] Multi-hypothesis trajectory tree, Merkle attestation & branch search hypervisor (`tree`)
+- [x] Multi-agent swarm orchestrator, dynamic handoff & debate flight recorder (`swarm`)
 
 ---
 

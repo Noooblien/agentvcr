@@ -61,6 +61,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/speculate"
 	"github.com/Noooblien/agentvcr/pkg/stego"
 	"github.com/Noooblien/agentvcr/pkg/storage"
+	"github.com/Noooblien/agentvcr/pkg/swarm"
 	"github.com/Noooblien/agentvcr/pkg/taint"
 	"github.com/Noooblien/agentvcr/pkg/tenant"
 	"github.com/Noooblien/agentvcr/pkg/throttle"
@@ -4003,6 +4004,211 @@ func main() {
 
 		log.Fatal("Usage: agentvcr tree --demo [--beam 2] [--depth 3] [--min-score 6.0] [--mermaid] [--strict]")
 
+	case "swarm":
+		swarmCmd := flag.NewFlagSet("swarm", flag.ExitOnError)
+		demo := swarmCmd.Bool("demo", false, "Run multi-agent swarm orchestration demonstration")
+		topo := swarmCmd.String("topology", "handoff", "Swarm topology: handoff, debate, or cycle")
+		maxHops := swarmCmd.Int("max-hops", 10, "Maximum allowable handoff hops before circuit breaking")
+		mermaid := swarmCmd.Bool("mermaid", false, "Render Mermaid diagram of swarm interaction topology")
+		strict := swarmCmd.Bool("strict", false, "Exit with non-zero exit code if unhandled cycle detected or consensus fails")
+		_ = swarmCmd.Parse(os.Args[2:])
+
+		if *demo {
+			switch *topo {
+			case "debate":
+				orc := swarm.NewSwarmOrchestrator("swarm-consensus-debate-1", swarm.TopologyDebateJury)
+				debaters := []string{"perf-engineer", "security-officer", "finops-lead"}
+				judge := "cto-judge"
+
+				now := time.Now()
+				ballots := []swarm.DebateBallot{
+					{
+						AgentName:  "perf-engineer",
+						Position:   "Adopt gRPC with HTTP/2 Multiplexing",
+						Rationale:  "Sub-millisecond serialization overhead and binary Protobuf schemas maximize throughput.",
+						Confidence: 0.94,
+						Weight:     1.1,
+						Timestamp:  now.Add(-2 * time.Minute),
+					},
+					{
+						AgentName:  "security-officer",
+						Position:   "Adopt gRPC with HTTP/2 Multiplexing",
+						Rationale:  "Native mTLS enforcement with hardware SPIFFE/SPIRE identity attestation guarantees Zero-Trust.",
+						Confidence: 0.91,
+						Weight:     1.2,
+						Timestamp:  now.Add(-90 * time.Second),
+					},
+					{
+						AgentName:  "finops-lead",
+						Position:   "Retain REST/JSON with Gzip",
+						Rationale:  "Existing CDN edge caching avoids re-architecture Capex costs.",
+						Confidence: 0.65,
+						Weight:     0.7,
+						Timestamp:  now.Add(-30 * time.Second),
+					},
+				}
+
+				report, err := orc.RunDebateWorkflow("RFC-402: Production Inter-Agent Transport Architecture", debaters, judge, ballots)
+				if err != nil {
+					log.Fatalf("Swarm debate execution error: %v", err)
+				}
+
+				if *mermaid {
+					fmt.Println(swarm.RenderSwarmMermaid(report))
+					return
+				}
+
+				fmt.Print(swarm.RenderSwarmScorecard(report))
+
+				if *strict && (report.Verdict == nil || !report.Verdict.ConsensusReached) {
+					log.Fatalf("Swarm debate failed strict consensus check")
+				}
+				return
+
+			case "cycle":
+				orc := swarm.NewSwarmOrchestrator("swarm-cycle-demo", swarm.TopologyHandoff)
+				a1 := &swarm.SwarmAgent{
+					Name:            "agent-alpha",
+					Role:            swarm.RolePlanner,
+					AllowedHandoffs: []string{"agent-beta"},
+					ExecutionHandler: func(ctx *swarm.SwarmContext, in string) (*swarm.AgentOutput, error) {
+						return &swarm.AgentOutput{
+							Content:        "Alpha transferring task to Beta for validation",
+							HandoffTo:      "agent-beta",
+							TokensConsumed: 45,
+						}, nil
+					},
+				}
+				a2 := &swarm.SwarmAgent{
+					Name:            "agent-beta",
+					Role:            swarm.RoleCoder,
+					AllowedHandoffs: []string{"agent-alpha"},
+					ExecutionHandler: func(ctx *swarm.SwarmContext, in string) (*swarm.AgentOutput, error) {
+						return &swarm.AgentOutput{
+							Content:        "Beta transferring task back to Alpha for re-planning",
+							HandoffTo:      "agent-alpha",
+							TokensConsumed: 50,
+						}, nil
+					},
+				}
+				_ = orc.RegisterAgent(a1)
+				_ = orc.RegisterAgent(a2)
+
+				report, err := orc.RunHandoffWorkflow("agent-alpha", "Execute cyclical routine", 6)
+				if err != nil {
+					log.Fatalf("Swarm execution failed: %v", err)
+				}
+
+				if *mermaid {
+					fmt.Println(swarm.RenderSwarmMermaid(report))
+					return
+				}
+
+				fmt.Print(swarm.RenderSwarmScorecard(report))
+
+				if *strict && !report.CircuitBreakerFired {
+					log.Fatalf("Expected circuit breaker to fire on ping-pong cycle")
+				}
+				return
+
+			default: // "handoff"
+				orc := swarm.NewSwarmOrchestrator("swarm-incident-remediation", swarm.TopologyHandoff)
+
+				// Agent 1: Triage
+				_ = orc.RegisterAgent(&swarm.SwarmAgent{
+					Name:            "incident-triage",
+					Role:            swarm.RoleTriage,
+					AllowedHandoffs: []string{"sre-diagnostician"},
+					ExecutionHandler: func(ctx *swarm.SwarmContext, in string) (*swarm.AgentOutput, error) {
+						return &swarm.AgentOutput{
+							Content: "P0 Alert: Ingress HTTP 502 spike detected. Dispatching to SRE Diagnostician.",
+							ContextUpdates: map[string]interface{}{
+								"incident_id": "INC-2026-904",
+								"severity":    "P0",
+								"cluster":     "prod-us-east-1",
+							},
+							HandoffTo:      "sre-diagnostician",
+							HandoffReason:  "Identify root cause of 502 gateway timeouts",
+							TokensConsumed: 110,
+						}, nil
+					},
+				})
+
+				// Agent 2: SRE Diagnostician
+				_ = orc.RegisterAgent(&swarm.SwarmAgent{
+					Name:            "sre-diagnostician",
+					Role:            swarm.RoleAuditor,
+					AllowedHandoffs: []string{"remediation-engineer"},
+					ExecutionHandler: func(ctx *swarm.SwarmContext, in string) (*swarm.AgentOutput, error) {
+						return &swarm.AgentOutput{
+							Content: "Diagnosed OOMKilled cgroup limits on ingress container. Requesting memory scale-up to 4Gi.",
+							ContextUpdates: map[string]interface{}{
+								"recommended_memory": "4Gi",
+								"replicas":           5,
+							},
+							HandoffTo:      "remediation-engineer",
+							HandoffReason:  "Apply deployment manifest patch",
+							TokensConsumed: 135,
+						}, nil
+					},
+				})
+
+				// Agent 3: Remediation Engineer
+				_ = orc.RegisterAgent(&swarm.SwarmAgent{
+					Name:            "remediation-engineer",
+					Role:            swarm.RoleCoder,
+					AllowedHandoffs: []string{"security-verifier"},
+					ExecutionHandler: func(ctx *swarm.SwarmContext, in string) (*swarm.AgentOutput, error) {
+						return &swarm.AgentOutput{
+							Content: "Patch applied: ingress-deployment.yaml updated (memory: 4Gi, replicas: 5). Rolling restart initiated.",
+							ContextUpdates: map[string]interface{}{
+								"patch_status": "applied",
+							},
+							HandoffTo:      "security-verifier",
+							HandoffReason:  "Verify Zero-Trust egress policy compliance post-patch",
+							TokensConsumed: 140,
+						}, nil
+					},
+				})
+
+				// Agent 4: Security Verifier (Terminal)
+				_ = orc.RegisterAgent(&swarm.SwarmAgent{
+					Name:            "security-verifier",
+					Role:            swarm.RoleReviewer,
+					AllowedHandoffs: nil,
+					ExecutionHandler: func(ctx *swarm.SwarmContext, in string) (*swarm.AgentOutput, error) {
+						incID, _ := ctx.ContextVariables["incident_id"].(string)
+						return &swarm.AgentOutput{
+							Content: fmt.Sprintf("Incident %s resolved. Zero-Trust egress attested. 0 HTTP 5xx errors across 50,000 probes.", incID),
+							ContextUpdates: map[string]interface{}{
+								"resolution_status": "closed",
+							},
+							TokensConsumed: 125,
+						}, nil
+					},
+				})
+
+				report, err := orc.RunHandoffWorkflow("incident-triage", "Investigate Ingress 502 Alert", *maxHops)
+				if err != nil {
+					log.Fatalf("Swarm workflow error: %v", err)
+				}
+
+				if *mermaid {
+					fmt.Println(swarm.RenderSwarmMermaid(report))
+					return
+				}
+
+				fmt.Print(swarm.RenderSwarmScorecard(report))
+
+				if *strict && (!report.Passed || report.CycleDetected || report.TotalTurns != 4) {
+					log.Fatalf("Swarm execution failed strict validation check")
+				}
+				return
+			}
+		}
+
+		log.Fatal("Usage: agentvcr swarm --demo [--topology handoff|debate|cycle] [--max-hops 10] [--mermaid] [--strict]")
+
 	default:
 		printHelp()
 	}
@@ -4071,6 +4277,7 @@ func printHelp() {
 	fmt.Println("  debug       Time-travel agent debugger, conditional breakpoints & DAP hypervisor")
 	fmt.Println("  a2a         Agent-to-Agent (A2A) protocol transport, card discovery & delegation")
 	fmt.Println("  tree        Multi-hypothesis trajectory tree, Merkle attestation & branch search")
+	fmt.Println("  swarm       Multi-agent swarm orchestrator, dynamic handoff & debate flight recorder")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -4136,4 +4343,6 @@ func printHelp() {
 	fmt.Println("  agentvcr debug --demo -strict")
 	fmt.Println("  agentvcr a2a --demo -strict")
 	fmt.Println("  agentvcr tree --demo -strict")
+	fmt.Println("  agentvcr swarm --demo -strict")
+	fmt.Println("  agentvcr swarm --demo --topology debate -strict")
 }

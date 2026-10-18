@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Multi-Agent Swarm Orchestrator, Dynamic Handoffs & Debate Flight Recorder (`pkg/swarm`)**: Production-grade multi-agent swarm runtime coordinating collaborative agent networks through dynamic stateful handoffs (`transfer_to_<agent>`), multi-agent debate panels with jury consensus voting, and deterministic trajectory flight recording.
+- **Ping-Pong & Infinite Handoff Deadlock Cycle Detection (`pkg/swarm/cycle.go`)**: Real-time cycle detector and circuit breaker identifying recursive handoff loops ($A \rightarrow B \rightarrow A \rightarrow B$) and circular multi-node walks before token runaway or cost escalation occurs.
+- **Debate & Multi-Agent Jury Panel Consensus (`pkg/swarm/orchestrator.go`)**: Aggregates structured debate ballots across competing specialist agents with weighted confidence scoring, supermajority detection, and dissensus localization.
+- **Interactive Swarm Scorecard & Mermaid Visualizer (`agentvcr swarm --demo`)**: Rich ANSI terminal scorecard tracking agent handoff chains, context variable propagation, token burn per agent, and Mermaid graphs visualizing handoffs and debate consensus.
 - **Multi-Hypothesis Trajectory Tree & Merkle Branch Search Hypervisor (`pkg/tree`)**: Hierarchical tree-structured trajectory exploration engine supporting Tree-of-Thought (ToT), beam search, and best-first search hypervising over alternative agent reasoning hypotheses, prompt variations, and tool execution branches.
 - **Cryptographic Merkle Tree Attestation & Proof Chains (`pkg/tree/merkle.go`)**: Deterministic SHA-256 Merkle root computation across branching trajectories with verifiable upward inclusion proofs and cross-session subtree deduplication.
 - **Adaptive Branch Pruning & Heuristic Hypervisor (`pkg/tree/hypervisor.go`)**: Real-time pruning of dead-end hypotheses based on confidence score thresholds, runaway token budgets, semantic errors, and cyclic loop detection.
