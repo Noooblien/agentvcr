@@ -143,6 +143,7 @@ client = OpenAI(
 - [x] Agent-to-Agent (A2A) protocol transport, card discovery & delegation bus (`a2a`)
 - [x] Model Context Protocol (MCP) schema fuzzing & mutation testing harness (`mcp -action fuzz`)
 - [x] LLM-as-a-Judge multi-dimensional rubric trajectory evaluation & grading engine (`eval -judge`)
+- [x] Multi-hypothesis trajectory tree, Merkle attestation & branch search hypervisor (`tree`)
 
 ---
 

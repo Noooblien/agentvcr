@@ -67,6 +67,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/timing"
 	"github.com/Noooblien/agentvcr/pkg/tlaplus"
 	"github.com/Noooblien/agentvcr/pkg/trace"
+	"github.com/Noooblien/agentvcr/pkg/tree"
 	"github.com/Noooblien/agentvcr/pkg/tui"
 	"github.com/Noooblien/agentvcr/pkg/vision"
 	"github.com/Noooblien/agentvcr/pkg/voice"
@@ -3854,6 +3855,154 @@ func main() {
 		_ = demo
 		return
 
+	case "tree":
+		treeCmd := flag.NewFlagSet("tree", flag.ExitOnError)
+		demo := treeCmd.Bool("demo", false, "Run multi-hypothesis trajectory tree exploration demo")
+		beamWidth := treeCmd.Int("beam", 2, "Beam search width (top-k hypotheses retained per level)")
+		maxDepth := treeCmd.Int("depth", 3, "Maximum exploration depth")
+		policyStr := treeCmd.String("policy", "beam_search", "Search policy: beam_search, best_first, mcts, dfs")
+		minScore := treeCmd.Float64("min-score", 6.0, "Minimum confidence score threshold before branch pruning")
+		maxTokens := treeCmd.Int("max-tokens", 5000, "Maximum cumulative token budget per branch")
+		mermaid := treeCmd.Bool("mermaid", false, "Render Mermaid diagram of trajectory tree and winning path")
+		strict := treeCmd.Bool("strict", false, "Exit with non-zero code if optimal branch average score is below 8.5")
+		_ = treeCmd.Parse(os.Args[2:])
+
+		if *demo {
+			rootPrompt := "Remediate HTTP 502 Bad Gateway alerts triggered by memory exhaustion on edge ingress."
+			tr := tree.NewTrajectoryTree("tree-demo-remediation", rootPrompt, map[string]string{
+				"cluster":     "prod-us-east-1",
+				"environment": "production",
+			})
+
+			expander := func(n *tree.TreeNode) []tree.ExpansionCandidate {
+				if n.Depth == 0 {
+					return []tree.ExpansionCandidate{
+						{
+							Content:    "Path 1 (Canary Scale): Scale up ingress replicas to 5 and allocate 4Gi memory limit",
+							Role:       "assistant",
+							EventType:  trace.EventToolCall,
+							Payload:    map[string]interface{}{"action": "scale_replicas", "replicas": 5, "memory": "4Gi"},
+							Score:      9.4,
+							TokenUsage: 85,
+						},
+						{
+							Content:    "Path 2 (Risky Action): Unconditionally kill all ingress background pods without draining traffic",
+							Role:       "assistant",
+							EventType:  trace.EventToolCall,
+							Payload:    map[string]interface{}{"action": "kill_all_pods"},
+							Score:      3.5, // Below minScore threshold -> Pruned: Low Confidence
+							TokenUsage: 40,
+						},
+						{
+							Content:    "Path 3 (Cache Flush): Flush Redis L2 cache buffer pools and restart ingress nginx workers",
+							Role:       "assistant",
+							EventType:  trace.EventToolCall,
+							Payload:    map[string]interface{}{"action": "flush_l2_cache"},
+							Score:      8.8,
+							TokenUsage: 110,
+						},
+					}
+				}
+				if n.Depth == 1 {
+					if strings.Contains(n.Content, "Path 1") {
+						return []tree.ExpansionCandidate{
+							{
+								Content:    "kubectl apply -f ingress-deployment.yaml -> 5/5 pods healthy, memory stabilized at 54%",
+								Role:       "tool",
+								EventType:  trace.EventToolResult,
+								Payload:    map[string]interface{}{"pods_ready": 5, "memory_percent": 54},
+								Score:      9.7,
+								TokenUsage: 120,
+							},
+							{
+								Content:    "kubectl apply -f ingress-deployment.yaml -> timeout waiting for memory cgroup allocation",
+								Role:       "tool",
+								EventType:  trace.EventToolResult,
+								Payload:    map[string]interface{}{"error": "cgroup_timeout"},
+								Score:      5.2, // Below minScore threshold -> Pruned
+								TokenUsage: 90,
+							},
+						}
+					}
+					if strings.Contains(n.Content, "Path 3") {
+						return []tree.ExpansionCandidate{
+							{
+								Content:    "redis-cli flushall -> Cache evicted, nginx workers reloaded, memory reduced to 68%",
+								Role:       "tool",
+								EventType:  trace.EventToolResult,
+								Payload:    map[string]interface{}{"cache_evicted": true, "memory_percent": 68},
+								Score:      8.9,
+								TokenUsage: 105,
+							},
+						}
+					}
+				}
+				if n.Depth == 2 {
+					if strings.Contains(n.Content, "5/5 pods healthy") {
+						return []tree.ExpansionCandidate{
+							{
+								Content:    "Remediation verified: 0 HTTP 5xx errors across 10,000 requests. Ingress traffic nominal. Operation completed successfully.",
+								Role:       "assistant",
+								EventType:  trace.EventLLMResponse,
+								Payload:    map[string]interface{}{"status": "success", "error_rate": 0.0},
+								Score:      9.9,
+								TokenUsage: 75,
+							},
+						}
+					}
+					if strings.Contains(n.Content, "Cache evicted") {
+						return []tree.ExpansionCandidate{
+							{
+								Content:    "Cache warm-up in progress, 2% transient latency increase observed.",
+								Role:       "assistant",
+								EventType:  trace.EventLLMResponse,
+								Payload:    map[string]interface{}{"status": "partial"},
+								Score:      8.6,
+								TokenUsage: 80,
+							},
+						}
+					}
+				}
+				return nil
+			}
+
+			searchOpts := tree.SearchOptions{
+				BeamWidth:         *beamWidth,
+				MaxDepth:          *maxDepth,
+				MinScoreThreshold: *minScore,
+				MaxTokenBudget:    *maxTokens,
+				Policy:            tree.SearchPolicy(*policyStr),
+			}
+
+			optimalPath, err := tr.RunBeamSearch(expander, searchOpts)
+			if err != nil {
+				log.Fatalf("Tree beam search error: %v", err)
+			}
+
+			// Cryptographic Merkle Proof Verification of winning leaf
+			if optimalPath != nil {
+				valid, proof, err := tr.VerifyMerkleProof(optimalPath.LeafID)
+				if !valid || err != nil {
+					log.Fatalf("Cryptographic Merkle verification failed: %v", err)
+				}
+				_ = proof
+			}
+
+			if *mermaid {
+				fmt.Println(tree.RenderTreeMermaid(tr))
+				return
+			}
+
+			fmt.Print(tree.RenderTreeScorecard(tr))
+
+			if *strict && (optimalPath == nil || optimalPath.AverageScore < 8.5) {
+				log.Fatalf("Trajectory tree evaluation failed strict score threshold: %.2f < 8.5", optimalPath.AverageScore)
+			}
+			return
+		}
+
+		log.Fatal("Usage: agentvcr tree --demo [--beam 2] [--depth 3] [--min-score 6.0] [--mermaid] [--strict]")
+
 	default:
 		printHelp()
 	}
@@ -3921,6 +4070,7 @@ func printHelp() {
 	fmt.Println("  checkpoint  Session checkpoint hibernation, delta compression & hot restoration")
 	fmt.Println("  debug       Time-travel agent debugger, conditional breakpoints & DAP hypervisor")
 	fmt.Println("  a2a         Agent-to-Agent (A2A) protocol transport, card discovery & delegation")
+	fmt.Println("  tree        Multi-hypothesis trajectory tree, Merkle attestation & branch search")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
@@ -3985,4 +4135,5 @@ func printHelp() {
 	fmt.Println("  agentvcr checkpoint --demo -strict")
 	fmt.Println("  agentvcr debug --demo -strict")
 	fmt.Println("  agentvcr a2a --demo -strict")
+	fmt.Println("  agentvcr tree --demo -strict")
 }
