@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Steganographic Provenance Watermarking & Text Fingerprint Attestation Engine (`pkg/watermark`)**: Invisible zero-width Unicode (`\u200B`, `\u200C`, `\u200D`) bit-level steganographic embedding, cryptographic HMAC-SHA256 signature attestation, and provenance verification for generated agent outputs.
+- **Dual Provenance Strategies (`pkg/watermark/engine.go`)**: Seamless support for zero-width invisible Unicode embedding (`zero_width_unicode`) and structured HTML/Markdown comment headers (`header_signature`) with automatic tamper and mutation detection.
+- **Trajectory Watermark Forensics & Audit Report (`pkg/watermark/types.go`)**: Session-wide scanner verifying model provenance, agent origin, session lineage, bit-level integrity confidence (0.0-10.0), and cryptographic signature validity.
+- **Interactive Watermark Scorecard & Mermaid Visualizer (`agentvcr watermark --demo`)**: Rich ANSI terminal scorecard tracking turn-by-turn watermark extraction, tamper detection status, and Mermaid lifecycle DAGs.
 - **Ephemeral Firecracker MicroVM Jail Containment & Memory Snapshot Hypervisor (`pkg/microvm`)**: Sub-millisecond hardware-isolated execution sandbox for autonomous agents with microVM kernel cold-boots (~12ms), copy-on-write memory snapshotting, and instant time-travel state rollback (~5ms).
 - **Zero-Trust Seccomp-BPF & Chroot Jail Defenses (`pkg/microvm/hypervisor.go`)**: Real-time syscall interception (blocking `reboot`, `ptrace`, `bpf`, `mount`) and path containment preventing host filesystem escape or raw network socket manipulation.
 - **Microsecond Memory State Attestation**: SHA-256 memory dump and CPU register attestation verifying zero state corruption before and after tool invocations.
