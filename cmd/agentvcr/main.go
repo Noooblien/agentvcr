@@ -30,6 +30,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/contextloss"
 	"github.com/Noooblien/agentvcr/pkg/counterfactual"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
+	"github.com/Noooblien/agentvcr/pkg/deadlock"
 	"github.com/Noooblien/agentvcr/pkg/debugger"
 	"github.com/Noooblien/agentvcr/pkg/determinism"
 	"github.com/Noooblien/agentvcr/pkg/diff"
@@ -42,6 +43,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/flamegraph"
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
+	"github.com/Noooblien/agentvcr/pkg/metrics"
 	"github.com/Noooblien/agentvcr/pkg/gateway"
 	"github.com/Noooblien/agentvcr/pkg/gossip"
 	"github.com/Noooblien/agentvcr/pkg/graph"
@@ -905,6 +907,70 @@ func main() {
 		}
 		return
 
+	case "deadlock":
+		dlkCmd := flag.NewFlagSet("deadlock", flag.ExitOnError)
+		demo := dlkCmd.Bool("demo", false, "Run 4-scenario multi-agent distributed deadlock and livelock demo")
+		swarmID := dlkCmd.String("swarm", "swarm-production", "Swarm identifier")
+		stallSec := dlkCmd.Int("stall-sec", 5, "Stall duration threshold in seconds")
+		mermaid := dlkCmd.Bool("mermaid", false, "Render Mermaid diagram of Wait-For Graph (WFG)")
+		format := dlkCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := dlkCmd.Bool("strict", false, "Exit with code 1 if deadlock or unresolvable cycle detected")
+		_ = dlkCmd.Parse(os.Args[2:])
+
+		cfg := deadlock.DefaultDeadlockConfig()
+		cfg.StallThreshold = time.Duration(*stallSec) * time.Second
+		_ = deadlock.NewEngine(cfg)
+
+		if *demo || len(os.Args) <= 2 {
+			summary := deadlock.RunDeadlockDemo()
+
+			switch *format {
+			case "markdown":
+				for _, a := range summary.Assessments {
+					fmt.Println(deadlock.RenderDeadlockMarkdown(a))
+				}
+			case "json":
+				bytes, _ := json.MarshalIndent(summary, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				for _, a := range summary.Assessments {
+					fmt.Print(deadlock.RenderDeadlockScorecard(a))
+					if *mermaid {
+						fmt.Println(deadlock.RenderDeadlockMermaid(a))
+					}
+				}
+				fmt.Printf("\n\033[1;32m✓ Deadlock Demo Complete.\033[0m Audited %d swarms (%d deadlocked, %d livelocks, %d cycles resolved). Avg DFS: %.1f/100.\n\n",
+					summary.TotalSwarmsAudited, summary.DeadlocksDetected, summary.LivelocksDetected, summary.CyclesResolved, summary.AverageDFS)
+			}
+
+			if *strict && summary.DeadlocksDetected > 0 {
+				os.Exit(1)
+			}
+			return
+		}
+
+		summary := deadlock.RunDeadlockDemo()
+		assessment := summary.Assessments[0]
+		assessment.SwarmID = *swarmID
+
+		switch *format {
+		case "markdown":
+			fmt.Println(deadlock.RenderDeadlockMarkdown(assessment))
+		case "json":
+			bytes, _ := json.MarshalIndent(assessment, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(deadlock.RenderDeadlockScorecard(assessment))
+			if *mermaid {
+				fmt.Println(deadlock.RenderDeadlockMermaid(assessment))
+			}
+		}
+
+		if *strict && assessment.HasDeadlock {
+			os.Exit(1)
+		}
+		return
+
 	case "eval":
 		evalCmd := flag.NewFlagSet("eval", flag.ExitOnError)
 		sessionID := evalCmd.String("id", "", "Trace session ID to evaluate")
@@ -1111,11 +1177,42 @@ func main() {
 
 	case "snapshot":
 		snapCmd := flag.NewFlagSet("snapshot", flag.ExitOnError)
+		demo := snapCmd.Bool("demo", false, "Run layered CoW filesystem snapshot and microsecond rollback demo")
 		dir := snapCmd.String("dir", ".", "Directory path to snapshot")
 		sessionID := snapCmd.String("id", "manual", "Session ID associate with snapshot")
 		step := snapCmd.Int("step", 0, "Execution step index")
 		restoreTo := snapCmd.String("restore", "", "Target directory path to restore snapshot to")
+		mermaid := snapCmd.Bool("mermaid", false, "Render Mermaid diagram of OverlayFS layer hierarchy")
+		format := snapCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := snapCmd.Bool("strict", false, "Exit with code 1 if dirty uncommitted changes or rollback failure")
 		_ = snapCmd.Parse(os.Args[2:])
+
+		if *demo || (len(os.Args) <= 2) {
+			report, err := snapshot.RunCoWDemo()
+			if err != nil {
+				log.Fatalf("CoW demo execution failed: %v", err)
+			}
+
+			switch *format {
+			case "markdown":
+				fmt.Println(snapshot.RenderCoWMarkdown(report))
+			case "json":
+				bytes, _ := json.MarshalIndent(report, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(snapshot.RenderCoWScorecard(report))
+				if *mermaid {
+					fmt.Println(snapshot.RenderCoWMermaid(report))
+				}
+				fmt.Printf("\033[1;32m✓ Layered CoW Snapshot Demo Complete.\033[0m Restored in %s with %d total layers.\n\n",
+					report.RollbackLatency, report.TotalLayers)
+			}
+
+			if *strict && report.Status != "COMMITTED" {
+				os.Exit(1)
+			}
+			return
+		}
 
 		mgr := snapshot.NewManager()
 		snap, err := mgr.CaptureWorkspace(*sessionID, *step, *dir)
@@ -1134,6 +1231,7 @@ func main() {
 			}
 			fmt.Printf("   Restored To: %s\n", *restoreTo)
 		}
+
 
 	case "cluster":
 		sessions, err := store.ListSessions()
@@ -1159,18 +1257,70 @@ func main() {
 
 	case "fuzz":
 		fuzzCmd := flag.NewFlagSet("fuzz", flag.ExitOnError)
+		demo := fuzzCmd.Bool("demo", false, "Run 4-attack-vector adversarial fuzzing campaign on representative flight trace")
 		sessionID := fuzzCmd.String("id", "", "Baseline trace session ID to fuzz")
 		strategy := fuzzCmd.String("strategy", "all", "Mutation strategy (prompt_injection, tool_fault, malformed_json, latency_spike, all)")
 		count := fuzzCmd.Int("count", 3, "Number of mutated trajectories to generate")
+		mermaid := fuzzCmd.Bool("mermaid", false, "Render Mermaid diagram of fuzzing campaign attack surfaces")
+		format := fuzzCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := fuzzCmd.Bool("strict", false, "Exit with code 1 if critical breaches detected or ARS < 75.0")
 		_ = fuzzCmd.Parse(os.Args[2:])
 
+		if *demo || (*sessionID == "" && len(os.Args) <= 2) {
+			report := fuzz.RunFuzzDemo()
+			switch *format {
+			case "markdown":
+				fmt.Println(fuzz.RenderFuzzMarkdown(report))
+			case "json":
+				bytes, _ := json.MarshalIndent(report, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(fuzz.RenderFuzzScorecard(report))
+				if *mermaid {
+					fmt.Println(fuzz.RenderFuzzMermaid(report))
+				}
+				fmt.Printf("\033[1;32m✓ Adversarial Fuzzing Campaign Complete.\033[0m Total Trials: %d | ARS: %.1f/100 | Status: %s\n\n",
+					report.TotalMutations, report.AgentRobustnessScore, report.Status)
+			}
+
+			if *strict && (report.CrashesDetected > 0 || report.AgentRobustnessScore < 75.0) {
+				os.Exit(1)
+			}
+			return
+		}
+
 		if *sessionID == "" {
-			log.Fatal("Usage: agentvcr fuzz -id <session_id> [-strategy <strategy>] [-count 3]")
+			log.Fatal("Usage: agentvcr fuzz --demo OR agentvcr fuzz -id <session_id> [-strategy <strategy>] [-count 3]")
 		}
 
 		session, err := store.LoadSession(*sessionID)
 		if err != nil {
 			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		if *format == "markdown" || *format == "json" || *mermaid {
+			cfg := fuzz.DefaultFuzzEngineConfig()
+			cfg.StrictCI = *strict
+			engine := fuzz.NewAdversarialEngine(cfg)
+			report := engine.RunCampaign(session)
+
+			switch *format {
+			case "markdown":
+				fmt.Println(fuzz.RenderFuzzMarkdown(report))
+			case "json":
+				bytes, _ := json.MarshalIndent(report, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(fuzz.RenderFuzzScorecard(report))
+				if *mermaid {
+					fmt.Println(fuzz.RenderFuzzMermaid(report))
+				}
+			}
+
+			if *strict && (report.CrashesDetected > 0 || report.AgentRobustnessScore < 75.0) {
+				os.Exit(1)
+			}
+			return
 		}
 
 		harness := fuzz.NewFuzzHarness(0)
@@ -1201,6 +1351,74 @@ func main() {
 			fmt.Printf("       Detail:   %s\n\n", rep.Description)
 		}
 		fmt.Printf("Saved %d mutated trajectories to ./.vcr_traces for replay and SLA verification.\n", len(fuzzedSessions))
+
+
+	case "metrics":
+		metricsCmd := flag.NewFlagSet("metrics", flag.ExitOnError)
+		demo := metricsCmd.Bool("demo", false, "Run granular token consumption, prompt cache & cost attribution demo")
+		sessionID := metricsCmd.String("id", "", "Trace session ID to audit for token metrics")
+		mermaid := metricsCmd.Bool("mermaid", false, "Render Mermaid diagram of token burn progression")
+		format := metricsCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := metricsCmd.Bool("strict", false, "Exit with code 1 if token efficiency score < 60.0")
+		_ = metricsCmd.Parse(os.Args[2:])
+
+		if *demo || (*sessionID == "" && len(os.Args) <= 2) {
+			report := metrics.RunTokenMetricsDemo()
+			switch *format {
+			case "markdown":
+				fmt.Println(metrics.RenderTokenMarkdown(report))
+			case "json":
+				bytes, _ := json.MarshalIndent(report, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(metrics.RenderTokenScorecard(report))
+				if *mermaid {
+					fmt.Println(metrics.RenderTokenMermaid(report))
+				}
+				fmt.Printf("\033[1;32m✓ Token Audit Complete.\033[0m Total Tokens: %d | Net Cost: $%.4f | Saved: $%.4f | Efficiency: %.1f/100 (%s)\n\n",
+					report.Breakdown.TotalTokens, report.Breakdown.TotalEstimatedCostUSD, report.Breakdown.EstimatedSavingsUSD,
+					report.TokenEfficiencyScore, report.EfficiencyVerdict)
+			}
+
+			if *strict && report.TokenEfficiencyScore < 60.0 {
+				os.Exit(1)
+			}
+			return
+		}
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr metrics --demo OR agentvcr metrics -id <session_id> [--format text|markdown|json]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Failed to load session %s: %v", *sessionID, err)
+		}
+
+		auditor := metrics.NewTokenAuditor()
+		report := auditor.AuditSession(session)
+
+		switch *format {
+		case "markdown":
+			fmt.Println(metrics.RenderTokenMarkdown(report))
+		case "json":
+			bytes, _ := json.MarshalIndent(report, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(metrics.RenderTokenScorecard(report))
+			if *mermaid {
+				fmt.Println(metrics.RenderTokenMermaid(report))
+			}
+			fmt.Printf("\033[1;32m✓ Token Audit Complete.\033[0m Total Tokens: %d | Net Cost: $%.4f | Saved: $%.4f | Efficiency: %.1f/100 (%s)\n\n",
+				report.Breakdown.TotalTokens, report.Breakdown.TotalEstimatedCostUSD, report.Breakdown.EstimatedSavingsUSD,
+				report.TokenEfficiencyScore, report.EfficiencyVerdict)
+		}
+
+		if *strict && report.TokenEfficiencyScore < 60.0 {
+			os.Exit(1)
+		}
+		return
+
 
 	case "serve":
 		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
@@ -5733,7 +5951,10 @@ func printHelp() {
 	fmt.Println("  triage      Automated root-cause triage, causal fault localization & patch synthesizer")
 	fmt.Println("  whatif      Counterfactual trajectory replay, what-if branch simulation & divergence analyzer")
 	fmt.Println("  contextloss Context window compaction degradation, constraint inversion & ghost fact profiler")
+	fmt.Println("  deadlock    Multi-agent distributed deadlock, wait-for graph & livelock resolver")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentvcr deadlock --demo [--mermaid] [--format text|markdown|json] [-strict]")
+	fmt.Println("  agentvcr deadlock -swarm swarm_prod_01 -stall-sec 10")
 	fmt.Println("  agentvcr contextloss --demo [--mermaid] [--format text|markdown|json] [-strict]")
 	fmt.Println("  agentvcr contextloss -orig trace_orig.txt -compacted trace_comp.txt")
 	fmt.Println("  agentvcr whatif --demo [--mermaid] [--format text|markdown|json] [-strict]")

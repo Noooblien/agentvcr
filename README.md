@@ -213,6 +213,81 @@ Audit information bleed, negative constraint inversion, and hallucinated ghost f
 ./bin/agentvcr contextloss --demo --format markdown -strict
 ```
 
+### 15. Multi-Agent Distributed Deadlock & Wait-For Graph (WFG) Resolver (`deadlock`)
+
+Detect circular dependencies, resource lock contention, and orphaned handoffs in multi-agent swarms with Tarjan's SCC cycle breaker and Deadlock Freedom Score (DFS 0–100):
+
+```bash
+# Run 4-scenario distributed deadlock and livelock demo (healthy, circular, lock contention, orphaned):
+./bin/agentvcr deadlock --demo
+
+# Generate Mermaid diagram visualizing the Wait-For Graph (WFG) and broken cycle edges:
+./bin/agentvcr deadlock --demo --mermaid
+
+# Audit specific multi-agent swarm with configurable stall timeout and strict CI gate:
+./bin/agentvcr deadlock -swarm swarm_prod_01 -stall-sec 10 --format markdown -strict
+```
+
+
+### 16. Adversarial Trajectory Fuzzing & Agent Robustness Profiler (`fuzz`)
+
+Audit agent resilience against prompt jailbreaks, malformed JSON-RPC frames, tool output null-byte injections, and Unicode buffer overflow attacks with automated Agent Robustness Score (ARS 0–100):
+
+```bash
+# Run 4-attack-vector adversarial fuzzing campaign on representative flight trace:
+./bin/agentvcr fuzz --demo
+
+# Generate Mermaid attack surface diagram with security breach alerts:
+./bin/agentvcr fuzz --demo --mermaid
+
+# Output GitHub Actions CI markdown audit report with strict exit gate on critical vulnerabilities:
+./bin/agentvcr fuzz --demo --format markdown -strict
+
+# Fuzz a specific recorded flight trajectory with custom mutation count:
+./bin/agentvcr fuzz -id trace_agent_autonomous_1760800000 -strategy all -count 5
+```
+
+
+
+### 17. Docker & Layered Copy-on-Write (CoW) Workspace Snapshotting (`snapshot`)
+
+Track workspace filesystem mutations with standard OCI OverlayFS whiteout tombstones, instant branch cloning, and microsecond rollback:
+
+```bash
+# Run layered CoW snapshotting and microsecond rollback demo:
+./bin/agentvcr snapshot --demo
+
+# Generate Mermaid diagram visualizing lower, upper scratch, and merged workspace views:
+./bin/agentvcr snapshot --demo --mermaid
+
+# Output GitHub Actions CI markdown audit report:
+./bin/agentvcr snapshot --demo --format markdown -strict
+
+# Capture standard workspace snapshot at step N:
+./bin/agentvcr snapshot -dir ./workspace -step 3 -id trace_1760800000
+```
+
+
+
+### 18. Granular Token Consumption Metrics, Prompt Cache & Cost Profiler (`metrics`)
+
+Audit fine-grained prompt tokens, completion tokens, prompt cache read hits, reasoning tokens, and per-step USD financial cost attribution across frontier LLM rate cards:
+
+```bash
+# Run granular token consumption, prompt cache & cost attribution demo:
+./bin/agentvcr metrics --demo
+
+# Generate Mermaid diagram visualizing token burn progression and financial attribution:
+./bin/agentvcr metrics --demo --mermaid
+
+# Output GitHub Actions CI markdown audit report with strict efficiency gate:
+./bin/agentvcr metrics --demo --format markdown -strict
+
+# Audit token efficiency and cost breakdown for a recorded session:
+./bin/agentvcr metrics -id trace_1760800000
+```
+
+
 ---
 
 ## Empirical Benchmarks & Developer Utility
