@@ -177,6 +177,24 @@ Simulate alternative agent decisions at step $k$ to test hypothetical interventi
 ./bin/agentvcr whatif --demo --format markdown -strict
 ```
 
+### 13. Reasoning Cycle Detection & Loop Breaker (`loopbreaker`)
+
+Detect infinite tool recursion, ping-pong deadlocks, and argument thrashing with sliding-window periodicity analysis, Jaccard argument similarity, and constitutional steering prompt injection:
+
+```bash
+# Run 4-scenario reasoning cycle detection and circuit breaker demonstration:
+./bin/agentvcr loopbreaker --demo
+
+# Generate Mermaid state diagram showing cyclical deadlocks and circuit breaker trip points:
+./bin/agentvcr loopbreaker --demo --mermaid
+
+# Inspect a recorded trajectory for reasoning loops and calculate token waste:
+./bin/agentvcr loopbreaker -id trace_1760800000
+
+# Output GitHub Actions CI markdown audit report with strict exit gate on circuit breaker trip:
+./bin/agentvcr loopbreaker --demo --format markdown -strict
+```
+
 ---
 
 ## Empirical Benchmarks & Developer Utility
@@ -212,6 +230,14 @@ Zero marketing hype. Below are empirical measurements captured directly by the A
 - **Net Tokens Saved**: `3,660 tokens` across 4 scenarios
 - **Simulator Latency Overhead (P50)**: `< 15 µs` per branch simulation
 
+### Reasoning Cycle Detection & Loop Breaker Benchmark (`agentvcr loopbreaker --demo`)
+| Cycle Pattern Scenario | Period ($p$) | Recurrence ($R$) | Arg Similarity | Action Enforced | Tokens Saved | Cost Savings | Status |
+|:-----------------------|:------------:|:----------------:|:--------------:|:---------------:|:------------:|:------------:|:------:|
+| **Syntax Error Self-Loop** | 1 | 2 | 100.0% | `TRIP_CIRCUIT_BREAKER` | +640 tok | +$0.0032 | ✅ PREEMPTED |
+| **Bipartite Ping-Pong Deadlock** | 2 | 2 | 100.0% | `TRIP_CIRCUIT_BREAKER` | +1,060 tok | +$0.0053 | ✅ PREEMPTED |
+| **Circular Web Scraping Cycle** | 3 | 2 | 100.0% | `TRIP_CIRCUIT_BREAKER` | +2,300 tok | +$0.0115 | ✅ PREEMPTED |
+| **Legitimate Batch Execution** | 1 | 0 | < 25.0% | `ALLOW` | 0 tok | $0.0000 | ✅ ALLOWED |
+
 ---
 
 ## Core Developer Capabilities
@@ -223,6 +249,7 @@ Zero marketing hype. Below are empirical measurements captured directly by the A
 | `agentvcr fork` | Branch past trajectories from step $N$ without re-running earlier steps | Isolated child session with parent pointer |
 | `agentvcr diff` | Semantic sequence alignment, AST comparison & regression shield | Diff scorecard & Mermaid execution DAG |
 | `agentvcr sentry` | Real-time trajectory anomaly sentry & circuit breaker | Tool loop & token velocity detection |
+| `agentvcr loopbreaker` | Automated reasoning cycle detector, argument thrashing & circuit breaker engine | ANSI scorecard, Mermaid cycle DAG, CI Markdown report |
 | `agentvcr determinism` | Empirical trajectory replay parity & token efficiency benchmark | ANSI scorecard, Markdown table, JSON gate |
 | `agentvcr chaos` | Empirical fault injection simulation & agent resilience testing | ANSI scorecard, Markdown report, Mermaid DAG |
 | `agentvcr flame` | Hierarchical execution flamegraph & critical path latency/token profiler | ANSI tree, Speedscope JSON, Chrome Tracing, Mermaid Gantt |

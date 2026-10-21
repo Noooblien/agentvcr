@@ -48,6 +48,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/heal"
 	"github.com/Noooblien/agentvcr/pkg/leaderboard"
 	"github.com/Noooblien/agentvcr/pkg/lineage"
+	"github.com/Noooblien/agentvcr/pkg/loopbreaker"
 	"github.com/Noooblien/agentvcr/pkg/lsp"
 	"github.com/Noooblien/agentvcr/pkg/mcp"
 	"github.com/Noooblien/agentvcr/pkg/memory"
@@ -742,6 +743,93 @@ func main() {
 		}
 
 		if *strict && comp.Outcome == counterfactual.OutcomeRegressionFailure {
+			os.Exit(1)
+		}
+		return
+
+	case "loopbreaker":
+		lbCmd := flag.NewFlagSet("loopbreaker", flag.ExitOnError)
+		demo := lbCmd.Bool("demo", false, "Run 4-scenario reasoning cycle detection and circuit breaker demonstration")
+		traceID := lbCmd.String("id", "", "Trace session ID to inspect for reasoning cycles")
+		maxPeriod := lbCmd.Int("max-period", 5, "Maximum cycle period to inspect (1 to 5)")
+		minRecur := lbCmd.Int("min-recur", 2, "Minimum consecutive repeats to flag cycle")
+		simThresh := lbCmd.Float64("sim-thresh", 0.80, "Argument similarity threshold (0.0 - 1.0)")
+		mermaid := lbCmd.Bool("mermaid", false, "Render Mermaid state diagram of detected cycle")
+		format := lbCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := lbCmd.Bool("strict", false, "Exit with code 1 if any circuit breaker was tripped")
+		_ = lbCmd.Parse(os.Args[2:])
+
+		cfg := loopbreaker.DefaultLoopConfig()
+		cfg.MaxPeriod = *maxPeriod
+		cfg.MinRecurrence = *minRecur
+		cfg.ArgumentSimilarityThreshold = *simThresh
+
+		if *demo || (*traceID == "" && len(os.Args) <= 2) {
+			summary := loopbreaker.RunDemoSuite(cfg)
+
+			switch *format {
+			case "markdown":
+				fmt.Println(loopbreaker.RenderLoopMarkdownReport(summary))
+			case "json":
+				bytes, _ := json.MarshalIndent(summary, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(loopbreaker.RenderLoopScorecard(summary))
+				if *mermaid {
+					fmt.Println(loopbreaker.RenderLoopMermaid(summary.Detections))
+				}
+				fmt.Printf("\n\033[1;32m✓ LoopBreaker Demo Complete.\033[0m Evaluated %d steps (%d cycles detected, %d steering prompts injected, %d circuit breakers tripped).\n\n",
+					summary.TotalStepsEvaluated, summary.CyclesDetected, summary.SteeringInterventions, summary.CircuitBreakersTripped)
+			}
+
+			if *strict && summary.CircuitBreakersTripped > 0 {
+				os.Exit(1)
+			}
+			return
+		}
+
+		session, err := store.LoadSession(*traceID)
+		if err != nil {
+			log.Fatalf("Failed to load trace session %s: %v", *traceID, err)
+		}
+
+		var steps []loopbreaker.StepRecord
+		for i, event := range session.Events {
+			if event.Type == trace.EventToolCall {
+				toolName, _ := event.Payload["tool"].(string)
+				if toolName == "" {
+					toolName, _ = event.Payload["name"].(string)
+				}
+				argsMap, _ := event.Payload["arguments"].(map[string]interface{})
+				argsJSON, _ := json.Marshal(argsMap)
+				steps = append(steps, loopbreaker.StepRecord{
+					StepIndex:      i,
+					Timestamp:      event.Timestamp,
+					ToolName:       toolName,
+					Arguments:      argsMap,
+					ArgumentsJSON:  string(argsJSON),
+					TokensConsumed: 150,
+				})
+			}
+		}
+
+		breaker := loopbreaker.NewLoopBreaker(cfg)
+		summary := breaker.InspectTrace(steps)
+
+		switch *format {
+		case "markdown":
+			fmt.Println(loopbreaker.RenderLoopMarkdownReport(*summary))
+		case "json":
+			bytes, _ := json.MarshalIndent(summary, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(loopbreaker.RenderLoopScorecard(*summary))
+			if *mermaid {
+				fmt.Println(loopbreaker.RenderLoopMermaid(summary.Detections))
+			}
+		}
+
+		if *strict && summary.CircuitBreakersTripped > 0 {
 			os.Exit(1)
 		}
 		return
@@ -5507,6 +5595,7 @@ func printHelp() {
 	fmt.Println("  determinism Trajectory replay determinism & token efficiency benchmark engine")
 	fmt.Println("  chaos       Agent chaos & fault injection simulation and resilience testing engine")
 	fmt.Println("  flame       Hierarchical execution flamegraph & critical path latency/token profiler")
+	fmt.Println("  loopbreaker Automated reasoning cycle detector, argument thrashing & circuit breaker engine")
 	fmt.Println("  eval        Run deterministic assertion suites and SLAs on trajectories")
 	fmt.Println("  play        Interactive visual terminal playback of agent execution")
 	fmt.Println("  snapshot    Capture or restore deterministic workspace filesystem state")
@@ -5575,6 +5664,8 @@ func printHelp() {
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr whatif --demo [--mermaid] [--format text|markdown|json] [-strict]")
 	fmt.Println("  agentvcr whatif -id trace_1760800000 -step 2 -type tool -tool remote_api -replace local_cache")
+	fmt.Println("  agentvcr loopbreaker --demo [--mermaid] [--format text|markdown|json] [-strict]")
+	fmt.Println("  agentvcr loopbreaker -id trace_1760800000")
 	fmt.Println("  agentvcr triage --demo [--mermaid] [--format text|markdown|json] [-strict]")
 	fmt.Println("  agentvcr triage -id trace_1760800000")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
