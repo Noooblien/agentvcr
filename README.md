@@ -268,6 +268,26 @@ Track workspace filesystem mutations with standard OCI OverlayFS whiteout tombst
 ```
 
 
+
+### 18. Granular Token Consumption Metrics, Prompt Cache & Cost Profiler (`metrics`)
+
+Audit fine-grained prompt tokens, completion tokens, prompt cache read hits, reasoning tokens, and per-step USD financial cost attribution across frontier LLM rate cards:
+
+```bash
+# Run granular token consumption, prompt cache & cost attribution demo:
+./bin/agentvcr metrics --demo
+
+# Generate Mermaid diagram visualizing token burn progression and financial attribution:
+./bin/agentvcr metrics --demo --mermaid
+
+# Output GitHub Actions CI markdown audit report with strict efficiency gate:
+./bin/agentvcr metrics --demo --format markdown -strict
+
+# Audit token efficiency and cost breakdown for a recorded session:
+./bin/agentvcr metrics -id trace_1760800000
+```
+
+
 ---
 
 ## Empirical Benchmarks & Developer Utility

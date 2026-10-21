@@ -43,6 +43,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/flamegraph"
 	"github.com/Noooblien/agentvcr/pkg/forensics"
 	"github.com/Noooblien/agentvcr/pkg/fuzz"
+	"github.com/Noooblien/agentvcr/pkg/metrics"
 	"github.com/Noooblien/agentvcr/pkg/gateway"
 	"github.com/Noooblien/agentvcr/pkg/gossip"
 	"github.com/Noooblien/agentvcr/pkg/graph"
@@ -1350,6 +1351,73 @@ func main() {
 			fmt.Printf("       Detail:   %s\n\n", rep.Description)
 		}
 		fmt.Printf("Saved %d mutated trajectories to ./.vcr_traces for replay and SLA verification.\n", len(fuzzedSessions))
+
+
+	case "metrics":
+		metricsCmd := flag.NewFlagSet("metrics", flag.ExitOnError)
+		demo := metricsCmd.Bool("demo", false, "Run granular token consumption, prompt cache & cost attribution demo")
+		sessionID := metricsCmd.String("id", "", "Trace session ID to audit for token metrics")
+		mermaid := metricsCmd.Bool("mermaid", false, "Render Mermaid diagram of token burn progression")
+		format := metricsCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := metricsCmd.Bool("strict", false, "Exit with code 1 if token efficiency score < 60.0")
+		_ = metricsCmd.Parse(os.Args[2:])
+
+		if *demo || (*sessionID == "" && len(os.Args) <= 2) {
+			report := metrics.RunTokenMetricsDemo()
+			switch *format {
+			case "markdown":
+				fmt.Println(metrics.RenderTokenMarkdown(report))
+			case "json":
+				bytes, _ := json.MarshalIndent(report, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(metrics.RenderTokenScorecard(report))
+				if *mermaid {
+					fmt.Println(metrics.RenderTokenMermaid(report))
+				}
+				fmt.Printf("\033[1;32m✓ Token Audit Complete.\033[0m Total Tokens: %d | Net Cost: $%.4f | Saved: $%.4f | Efficiency: %.1f/100 (%s)\n\n",
+					report.Breakdown.TotalTokens, report.Breakdown.TotalEstimatedCostUSD, report.Breakdown.EstimatedSavingsUSD,
+					report.TokenEfficiencyScore, report.EfficiencyVerdict)
+			}
+
+			if *strict && report.TokenEfficiencyScore < 60.0 {
+				os.Exit(1)
+			}
+			return
+		}
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr metrics --demo OR agentvcr metrics -id <session_id> [--format text|markdown|json]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Failed to load session %s: %v", *sessionID, err)
+		}
+
+		auditor := metrics.NewTokenAuditor()
+		report := auditor.AuditSession(session)
+
+		switch *format {
+		case "markdown":
+			fmt.Println(metrics.RenderTokenMarkdown(report))
+		case "json":
+			bytes, _ := json.MarshalIndent(report, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(metrics.RenderTokenScorecard(report))
+			if *mermaid {
+				fmt.Println(metrics.RenderTokenMermaid(report))
+			}
+			fmt.Printf("\033[1;32m✓ Token Audit Complete.\033[0m Total Tokens: %d | Net Cost: $%.4f | Saved: $%.4f | Efficiency: %.1f/100 (%s)\n\n",
+				report.Breakdown.TotalTokens, report.Breakdown.TotalEstimatedCostUSD, report.Breakdown.EstimatedSavingsUSD,
+				report.TokenEfficiencyScore, report.EfficiencyVerdict)
+		}
+
+		if *strict && report.TokenEfficiencyScore < 60.0 {
+			os.Exit(1)
+		}
+		return
 
 
 	case "serve":
