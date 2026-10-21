@@ -288,6 +288,26 @@ Audit fine-grained prompt tokens, completion tokens, prompt cache read hits, rea
 ```
 
 
+
+### 19. Microsecond Subsystem Latency Benchmarks & SLA Verification (`bench-perf`)
+
+Profile sub-millisecond execution percentiles ($P_{50}, P_{90}, P_{99}, P_{99.9}$), throughput (ops/sec), and memory allocation overhead ($B/op$) across reverse proxy, MCP serialization, CoW snapshotting, and zstd storage:
+
+```bash
+# Run comprehensive microsecond benchmark suite across all subsystems:
+./bin/agentvcr bench-perf --demo
+
+# Profile specific subsystem with custom concurrency and Mermaid visualization:
+./bin/agentvcr bench-perf -target storage -iterations 200 -concurrency 4 --mermaid
+
+# Run concurrent multi-worker flight recording stress test:
+./bin/agentvcr bench-perf -target stress -concurrency 8 -iterations 500
+
+# Enforce strict CI latency gate with microsecond SLA threshold (e.g., P99 < 500µs):
+./bin/agentvcr bench-perf -target all -max-p99-us 500 --format markdown -strict
+```
+
+
 ---
 
 ## Empirical Benchmarks & Developer Utility

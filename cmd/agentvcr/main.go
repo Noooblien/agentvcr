@@ -3248,13 +3248,21 @@ func main() {
 
 	case "bench-perf":
 		perfCmd := flag.NewFlagSet("bench-perf", flag.ExitOnError)
+		demo := perfCmd.Bool("demo", false, "Run comprehensive sub-millisecond latency & micro-benchmark suite")
 		targetStr := perfCmd.String("target", "all", "Subsystem to profile: 'all', 'proxy', 'mcp', 'compact', 'cow', 'storage', or 'stress'")
 		concurrency := perfCmd.Int("concurrency", 4, "Concurrent worker pool size")
 		iterations := perfCmd.Int("iterations", 200, "Number of benchmark iterations")
 		warmup := perfCmd.Int("warmup", 20, "Number of warmup cycles")
 		maxP99 := perfCmd.Float64("max-p99-us", 2000.0, "Latency SLA threshold in microseconds (P99)")
+		mermaid := perfCmd.Bool("mermaid", false, "Render Mermaid diagram of subsystem latency percentiles")
+		format := perfCmd.String("format", "text", "Output format: text | markdown | json")
 		strict := perfCmd.Bool("strict", false, "Exit with non-zero exit code if latency SLA is breached")
 		_ = perfCmd.Parse(os.Args[2:])
+
+		if *demo {
+			*targetStr = "all"
+			*iterations = 100
+		}
 
 		if *targetStr == "stress" {
 			runner := perf.NewStressRunner(*concurrency, *iterations)
@@ -3286,11 +3294,23 @@ func main() {
 			log.Fatalf("Performance benchmarking failed: %v", err)
 		}
 
-		fmt.Print(perf.RenderPerformanceScorecard(report))
+		switch *format {
+		case "markdown":
+			fmt.Println(perf.RenderPerformanceMarkdown(report))
+		case "json":
+			bytes, _ := json.MarshalIndent(report, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(perf.RenderPerformanceScorecard(report))
+			if *mermaid {
+				fmt.Println(perf.RenderPerformanceMermaid(report))
+			}
+		}
 
 		if *strict && !report.OverallPassed {
 			os.Exit(1)
 		}
+
 
 	case "research":
 		researchCmd := flag.NewFlagSet("research", flag.ExitOnError)
