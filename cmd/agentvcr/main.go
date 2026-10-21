@@ -27,6 +27,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/compact"
 	"github.com/Noooblien/agentvcr/pkg/consensus"
+	"github.com/Noooblien/agentvcr/pkg/contextloss"
 	"github.com/Noooblien/agentvcr/pkg/counterfactual"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/debugger"
@@ -830,6 +831,76 @@ func main() {
 		}
 
 		if *strict && summary.CircuitBreakersTripped > 0 {
+			os.Exit(1)
+		}
+		return
+
+	case "contextloss":
+		clCmd := flag.NewFlagSet("contextloss", flag.ExitOnError)
+		demo := clCmd.Bool("demo", false, "Run 4-scenario context compaction loss, constraint inversion and ghost fact demo")
+		origFile := clCmd.String("orig", "", "Path to file containing original long-horizon trajectory text")
+		compFile := clCmd.String("compacted", "", "Path to file containing compacted context summary text")
+		mermaid := clCmd.Bool("mermaid", false, "Render Mermaid diagram of context degradation")
+		format := clCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := clCmd.Bool("strict", false, "Exit with code 1 if critical context loss or constraint inversion is detected")
+		_ = clCmd.Parse(os.Args[2:])
+
+		engine := contextloss.NewEngine(contextloss.DefaultContextLossConfig())
+
+		if *demo || (*origFile == "" && *compFile == "" && len(os.Args) <= 2) {
+			summary := contextloss.RunContextLossDemo()
+
+			switch *format {
+			case "markdown":
+				fmt.Println(contextloss.RenderContextLossMarkdown(summary))
+			case "json":
+				bytes, _ := json.MarshalIndent(summary, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(contextloss.RenderContextLossScorecard(summary))
+				if *mermaid {
+					fmt.Println(contextloss.RenderContextLossMermaid(summary))
+				}
+				fmt.Printf("\n\033[1;32m✓ ContextLoss Demo Complete.\033[0m Evaluated %d sessions (%d high fidelity, %d moderate bleed, %d critical loss). Avg CDS: %.1f/100.\n\n",
+					summary.TotalEvaluated, summary.HighFidelityCount, summary.ModerateBleedCount, summary.CriticalLossCount, summary.AverageCDS)
+			}
+
+			if *strict && summary.CriticalLossCount > 0 {
+				os.Exit(1)
+			}
+			return
+		}
+
+		if *origFile == "" || *compFile == "" {
+			log.Fatal("Usage: agentvcr contextloss -orig <file> -compacted <file> [--mermaid] [--format text|markdown|json] [-strict]")
+		}
+
+		origBytes, err := os.ReadFile(*origFile)
+		if err != nil {
+			log.Fatalf("Failed to read original trajectory file %s: %v", *origFile, err)
+		}
+		compBytes, err := os.ReadFile(*compFile)
+		if err != nil {
+			log.Fatalf("Failed to read compacted summary file %s: %v", *compFile, err)
+		}
+
+		assessment := engine.AuditCompaction("custom_session", string(origBytes), string(compBytes))
+		summary := engine.AuditBatch([]*contextloss.CompactionAssessment{assessment})
+
+		switch *format {
+		case "markdown":
+			fmt.Println(contextloss.RenderContextLossMarkdown(summary))
+		case "json":
+			bytes, _ := json.MarshalIndent(assessment, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(contextloss.RenderContextLossScorecard(summary))
+			if *mermaid {
+				fmt.Println(contextloss.RenderContextLossMermaid(summary))
+			}
+		}
+
+		if *strict && assessment.Tier == contextloss.TierCriticalLoss {
 			os.Exit(1)
 		}
 		return
@@ -5661,7 +5732,10 @@ func printHelp() {
 	fmt.Println("  regress     Golden trajectory assertions, sequence alignment & continuous regression testing")
 	fmt.Println("  triage      Automated root-cause triage, causal fault localization & patch synthesizer")
 	fmt.Println("  whatif      Counterfactual trajectory replay, what-if branch simulation & divergence analyzer")
+	fmt.Println("  contextloss Context window compaction degradation, constraint inversion & ghost fact profiler")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentvcr contextloss --demo [--mermaid] [--format text|markdown|json] [-strict]")
+	fmt.Println("  agentvcr contextloss -orig trace_orig.txt -compacted trace_comp.txt")
 	fmt.Println("  agentvcr whatif --demo [--mermaid] [--format text|markdown|json] [-strict]")
 	fmt.Println("  agentvcr whatif -id trace_1760800000 -step 2 -type tool -tool remote_api -replace local_cache")
 	fmt.Println("  agentvcr loopbreaker --demo [--mermaid] [--format text|markdown|json] [-strict]")
