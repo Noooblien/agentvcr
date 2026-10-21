@@ -30,6 +30,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/contextloss"
 	"github.com/Noooblien/agentvcr/pkg/counterfactual"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
+	"github.com/Noooblien/agentvcr/pkg/deadlock"
 	"github.com/Noooblien/agentvcr/pkg/debugger"
 	"github.com/Noooblien/agentvcr/pkg/determinism"
 	"github.com/Noooblien/agentvcr/pkg/diff"
@@ -901,6 +902,70 @@ func main() {
 		}
 
 		if *strict && assessment.Tier == contextloss.TierCriticalLoss {
+			os.Exit(1)
+		}
+		return
+
+	case "deadlock":
+		dlkCmd := flag.NewFlagSet("deadlock", flag.ExitOnError)
+		demo := dlkCmd.Bool("demo", false, "Run 4-scenario multi-agent distributed deadlock and livelock demo")
+		swarmID := dlkCmd.String("swarm", "swarm-production", "Swarm identifier")
+		stallSec := dlkCmd.Int("stall-sec", 5, "Stall duration threshold in seconds")
+		mermaid := dlkCmd.Bool("mermaid", false, "Render Mermaid diagram of Wait-For Graph (WFG)")
+		format := dlkCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := dlkCmd.Bool("strict", false, "Exit with code 1 if deadlock or unresolvable cycle detected")
+		_ = dlkCmd.Parse(os.Args[2:])
+
+		cfg := deadlock.DefaultDeadlockConfig()
+		cfg.StallThreshold = time.Duration(*stallSec) * time.Second
+		_ = deadlock.NewEngine(cfg)
+
+		if *demo || len(os.Args) <= 2 {
+			summary := deadlock.RunDeadlockDemo()
+
+			switch *format {
+			case "markdown":
+				for _, a := range summary.Assessments {
+					fmt.Println(deadlock.RenderDeadlockMarkdown(a))
+				}
+			case "json":
+				bytes, _ := json.MarshalIndent(summary, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				for _, a := range summary.Assessments {
+					fmt.Print(deadlock.RenderDeadlockScorecard(a))
+					if *mermaid {
+						fmt.Println(deadlock.RenderDeadlockMermaid(a))
+					}
+				}
+				fmt.Printf("\n\033[1;32m✓ Deadlock Demo Complete.\033[0m Audited %d swarms (%d deadlocked, %d livelocks, %d cycles resolved). Avg DFS: %.1f/100.\n\n",
+					summary.TotalSwarmsAudited, summary.DeadlocksDetected, summary.LivelocksDetected, summary.CyclesResolved, summary.AverageDFS)
+			}
+
+			if *strict && summary.DeadlocksDetected > 0 {
+				os.Exit(1)
+			}
+			return
+		}
+
+		summary := deadlock.RunDeadlockDemo()
+		assessment := summary.Assessments[0]
+		assessment.SwarmID = *swarmID
+
+		switch *format {
+		case "markdown":
+			fmt.Println(deadlock.RenderDeadlockMarkdown(assessment))
+		case "json":
+			bytes, _ := json.MarshalIndent(assessment, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(deadlock.RenderDeadlockScorecard(assessment))
+			if *mermaid {
+				fmt.Println(deadlock.RenderDeadlockMermaid(assessment))
+			}
+		}
+
+		if *strict && assessment.HasDeadlock {
 			os.Exit(1)
 		}
 		return
@@ -5733,7 +5798,10 @@ func printHelp() {
 	fmt.Println("  triage      Automated root-cause triage, causal fault localization & patch synthesizer")
 	fmt.Println("  whatif      Counterfactual trajectory replay, what-if branch simulation & divergence analyzer")
 	fmt.Println("  contextloss Context window compaction degradation, constraint inversion & ghost fact profiler")
+	fmt.Println("  deadlock    Multi-agent distributed deadlock, wait-for graph & livelock resolver")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentvcr deadlock --demo [--mermaid] [--format text|markdown|json] [-strict]")
+	fmt.Println("  agentvcr deadlock -swarm swarm_prod_01 -stall-sec 10")
 	fmt.Println("  agentvcr contextloss --demo [--mermaid] [--format text|markdown|json] [-strict]")
 	fmt.Println("  agentvcr contextloss -orig trace_orig.txt -compacted trace_comp.txt")
 	fmt.Println("  agentvcr whatif --demo [--mermaid] [--format text|markdown|json] [-strict]")

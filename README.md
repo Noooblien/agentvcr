@@ -213,6 +213,21 @@ Audit information bleed, negative constraint inversion, and hallucinated ghost f
 ./bin/agentvcr contextloss --demo --format markdown -strict
 ```
 
+### 15. Multi-Agent Distributed Deadlock & Wait-For Graph (WFG) Resolver (`deadlock`)
+
+Detect circular dependencies, resource lock contention, and orphaned handoffs in multi-agent swarms with Tarjan's SCC cycle breaker and Deadlock Freedom Score (DFS 0–100):
+
+```bash
+# Run 4-scenario distributed deadlock and livelock demo (healthy, circular, lock contention, orphaned):
+./bin/agentvcr deadlock --demo
+
+# Generate Mermaid diagram visualizing the Wait-For Graph (WFG) and broken cycle edges:
+./bin/agentvcr deadlock --demo --mermaid
+
+# Audit specific multi-agent swarm with configurable stall timeout and strict CI gate:
+./bin/agentvcr deadlock -swarm swarm_prod_01 -stall-sec 10 --format markdown -strict
+```
+
 ---
 
 ## Empirical Benchmarks & Developer Utility
