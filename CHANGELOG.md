@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Continuous Semantic Regression Detection & Golden Trajectory Assertions Engine (`pkg/regress`)**: Automated CI/CD regression guardrail evaluating candidate agent runs against golden execution baselines across tool sequences, token budgets, execution steps, and output schema contracts (`agentvcr regress`).
+- **Tool Sequence Alignment & Longest Common Subsequence (LCS)**: Computes sequence congruence, prerequisite tool fulfillment, and extraneous tool deviations without false-positive penalization.
+- **Granular Multi-Tier Assertion Engine**: Evaluates strict contracts including `FORBIDDEN_TOOLS_INVOCATION` (Critical), `MISSING_PREREQUISITE_TOOLS` (Major), `RUNAWAY_RETRY_LOOP_DETECTED` (Critical loop circuit breaker), `TOKEN_BLOAT_REGRESSION`, and `SCHEMA_KEYS_MISSING`.
+- **ANSI Regression Scorecards & Mermaid Trajectory Diff Graphs**: Colorized terminal diagnostics with remediation recommendations, Mermaid flowcharts contrasting golden vs candidate tool sequence paths, and CI-compatible Markdown reports (`--demo`, `--mermaid`, `--format`, `-strict`).
 - **Hierarchical Execution Flamegraph & Critical Path Latency/Token Profiler (`pkg/flamegraph`)**: Multi-dimensional execution profiler that decomposes complex multi-turn agent flight recordings into hierarchical flame trees spanning LLM inference, tool execution, prompt context assembly, and workspace state I/O.
 - **Critical Path Reconstruction & Bottleneck Hotspot Detection (`pkg/flamegraph/builder.go`)**: Automatically traces sequential execution bottlenecks through multi-step agent runs, identifying the blocking critical path and flagging operations consuming $>15\%$ wall-clock time or $>25\%$ token budgets.
 - **Multi-Format Serialization & Exporters (`pkg/flamegraph/export.go`)**: Full export support for Speedscope JSON v0.1.2 (`speedscope.app`), Google Chrome Tracing / Perfetto JSON (`chrome://tracing`), Mermaid Gantt execution timelines, and GitHub Flavored Markdown summary reports.

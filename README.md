@@ -129,6 +129,21 @@ Profile complex multi-turn trajectories across LLM inference, tool execution, an
 ./bin/agentvcr flame --demo -metric tokens
 ```
 
+### 10. Golden Trajectory Assertions & Continuous Regression Guard
+
+Automate CI/CD regression testing of candidate agent trajectories against golden baselines:
+
+```bash
+# Run 4-scenario golden trajectory regression suite:
+./bin/agentvcr regress --demo
+
+# Generate Mermaid flowchart contrasting golden vs candidate tool sequence paths:
+./bin/agentvcr regress --demo --mermaid
+
+# Output GitHub Actions CI-compatible markdown report with strict exit gate:
+./bin/agentvcr regress --demo --format markdown -strict
+```
+
 ---
 
 ## Empirical Benchmarks & Developer Utility
@@ -166,6 +181,7 @@ Zero marketing hype. Below are empirical measurements captured directly by the A
 | `agentvcr determinism` | Empirical trajectory replay parity & token efficiency benchmark | ANSI scorecard, Markdown table, JSON gate |
 | `agentvcr chaos` | Empirical fault injection simulation & agent resilience testing | ANSI scorecard, Markdown report, Mermaid DAG |
 | `agentvcr flame` | Hierarchical execution flamegraph & critical path latency/token profiler | ANSI tree, Speedscope JSON, Chrome Tracing, Mermaid Gantt |
+| `agentvcr regress` | Continuous semantic regression detection & golden trajectory assertions | ANSI scorecard, Mermaid diff flowchart, CI Markdown gate |
 | `agentvcr eval` | CI/CD assertion gates on cost, token budgets, and tool errors | Pass/fail status code for test pipelines |
 
 ---

@@ -59,6 +59,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/proxy"
 	"github.com/Noooblien/agentvcr/pkg/raft"
 	"github.com/Noooblien/agentvcr/pkg/redteam"
+	"github.com/Noooblien/agentvcr/pkg/regress"
 	"github.com/Noooblien/agentvcr/pkg/replay"
 	"github.com/Noooblien/agentvcr/pkg/research"
 	"github.com/Noooblien/agentvcr/pkg/sandbox"
@@ -518,6 +519,48 @@ func main() {
 			fmt.Printf("✨ Profile successfully exported to %s\n", *exportPath)
 		} else {
 			fmt.Println(output)
+		}
+
+	case "regress", "assert":
+		regressCmd := flag.NewFlagSet("regress", flag.ExitOnError)
+		demo := regressCmd.Bool("demo", false, "Run golden trajectory continuous regression test suite")
+		mermaid := regressCmd.Bool("mermaid", false, "Output Mermaid flowchart markup contrasting golden vs candidate tool sequence")
+		format := regressCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := regressCmd.Bool("strict", false, "Exit with code 1 if any regression assertion fails (CI/CD gate)")
+		_ = regressCmd.Parse(os.Args[2:])
+
+		suites := regress.GetDemoSuites()
+		if *demo || len(os.Args) == 2 {
+			eval := regress.NewEvaluator()
+			var allReports []*regress.RegressionReport
+			for _, s := range suites {
+				rep := eval.Evaluate(s.Spec, s.Candidate, s.GoldenTokens, s.GoldenDurationMs)
+				allReports = append(allReports, rep)
+
+				if *format == "text" {
+					fmt.Print(regress.RenderRegressionScorecard(rep))
+					if *mermaid {
+						fmt.Println(regress.RenderMermaidDiff(s.Spec, s.Candidate, rep))
+					}
+				}
+			}
+
+			switch *format {
+			case "markdown":
+				fmt.Println(regress.RenderMarkdownReport(allReports))
+			case "json":
+				bytes, _ := json.MarshalIndent(allReports, "", "  ")
+				fmt.Println(string(bytes))
+			}
+
+			if *strict {
+				for _, r := range allReports {
+					if r.Verdict != regress.VerdictPass {
+						os.Exit(1)
+					}
+				}
+			}
+			return
 		}
 
 	case "eval":
@@ -5343,9 +5386,11 @@ func printHelp() {
 	fmt.Println("  watermark   Steganographic provenance watermarking & text fingerprint attestation")
 	fmt.Println("  distill     Trajectory distillation, SFT / DPO alignment dataset synthesis")
 	fmt.Println("  harness     Standardized benchmark harness, SWE-bench & pass@k evaluator")
+	fmt.Println("  regress     Golden trajectory assertions, sequence alignment & continuous regression testing")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
+	fmt.Println("  agentvcr regress --demo [--mermaid] [--format text|markdown|json] [-strict]")
 	fmt.Println("  agentvcr fork -id trace_1760800000 -step 4")
 	fmt.Println("  agentvcr diff --demo -strict --mermaid")
 	fmt.Println("  agentvcr diff -base trace_1 -target trace_1_fork -tolerance 0.85")
