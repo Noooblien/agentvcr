@@ -228,6 +228,26 @@ Detect circular dependencies, resource lock contention, and orphaned handoffs in
 ./bin/agentvcr deadlock -swarm swarm_prod_01 -stall-sec 10 --format markdown -strict
 ```
 
+
+### 16. Adversarial Trajectory Fuzzing & Agent Robustness Profiler (`fuzz`)
+
+Audit agent resilience against prompt jailbreaks, malformed JSON-RPC frames, tool output null-byte injections, and Unicode buffer overflow attacks with automated Agent Robustness Score (ARS 0–100):
+
+```bash
+# Run 4-attack-vector adversarial fuzzing campaign on representative flight trace:
+./bin/agentvcr fuzz --demo
+
+# Generate Mermaid attack surface diagram with security breach alerts:
+./bin/agentvcr fuzz --demo --mermaid
+
+# Output GitHub Actions CI markdown audit report with strict exit gate on critical vulnerabilities:
+./bin/agentvcr fuzz --demo --format markdown -strict
+
+# Fuzz a specific recorded flight trajectory with custom mutation count:
+./bin/agentvcr fuzz -id trace_agent_autonomous_1760800000 -strategy all -count 5
+```
+
+
 ---
 
 ## Empirical Benchmarks & Developer Utility

@@ -1224,18 +1224,70 @@ func main() {
 
 	case "fuzz":
 		fuzzCmd := flag.NewFlagSet("fuzz", flag.ExitOnError)
+		demo := fuzzCmd.Bool("demo", false, "Run 4-attack-vector adversarial fuzzing campaign on representative flight trace")
 		sessionID := fuzzCmd.String("id", "", "Baseline trace session ID to fuzz")
 		strategy := fuzzCmd.String("strategy", "all", "Mutation strategy (prompt_injection, tool_fault, malformed_json, latency_spike, all)")
 		count := fuzzCmd.Int("count", 3, "Number of mutated trajectories to generate")
+		mermaid := fuzzCmd.Bool("mermaid", false, "Render Mermaid diagram of fuzzing campaign attack surfaces")
+		format := fuzzCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := fuzzCmd.Bool("strict", false, "Exit with code 1 if critical breaches detected or ARS < 75.0")
 		_ = fuzzCmd.Parse(os.Args[2:])
 
+		if *demo || (*sessionID == "" && len(os.Args) <= 2) {
+			report := fuzz.RunFuzzDemo()
+			switch *format {
+			case "markdown":
+				fmt.Println(fuzz.RenderFuzzMarkdown(report))
+			case "json":
+				bytes, _ := json.MarshalIndent(report, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(fuzz.RenderFuzzScorecard(report))
+				if *mermaid {
+					fmt.Println(fuzz.RenderFuzzMermaid(report))
+				}
+				fmt.Printf("\033[1;32m✓ Adversarial Fuzzing Campaign Complete.\033[0m Total Trials: %d | ARS: %.1f/100 | Status: %s\n\n",
+					report.TotalMutations, report.AgentRobustnessScore, report.Status)
+			}
+
+			if *strict && (report.CrashesDetected > 0 || report.AgentRobustnessScore < 75.0) {
+				os.Exit(1)
+			}
+			return
+		}
+
 		if *sessionID == "" {
-			log.Fatal("Usage: agentvcr fuzz -id <session_id> [-strategy <strategy>] [-count 3]")
+			log.Fatal("Usage: agentvcr fuzz --demo OR agentvcr fuzz -id <session_id> [-strategy <strategy>] [-count 3]")
 		}
 
 		session, err := store.LoadSession(*sessionID)
 		if err != nil {
 			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		if *format == "markdown" || *format == "json" || *mermaid {
+			cfg := fuzz.DefaultFuzzEngineConfig()
+			cfg.StrictCI = *strict
+			engine := fuzz.NewAdversarialEngine(cfg)
+			report := engine.RunCampaign(session)
+
+			switch *format {
+			case "markdown":
+				fmt.Println(fuzz.RenderFuzzMarkdown(report))
+			case "json":
+				bytes, _ := json.MarshalIndent(report, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(fuzz.RenderFuzzScorecard(report))
+				if *mermaid {
+					fmt.Println(fuzz.RenderFuzzMermaid(report))
+				}
+			}
+
+			if *strict && (report.CrashesDetected > 0 || report.AgentRobustnessScore < 75.0) {
+				os.Exit(1)
+			}
+			return
 		}
 
 		harness := fuzz.NewFuzzHarness(0)
@@ -1266,6 +1318,7 @@ func main() {
 			fmt.Printf("       Detail:   %s\n\n", rep.Description)
 		}
 		fmt.Printf("Saved %d mutated trajectories to ./.vcr_traces for replay and SLA verification.\n", len(fuzzedSessions))
+
 
 	case "serve":
 		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
