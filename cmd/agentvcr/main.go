@@ -1176,11 +1176,42 @@ func main() {
 
 	case "snapshot":
 		snapCmd := flag.NewFlagSet("snapshot", flag.ExitOnError)
+		demo := snapCmd.Bool("demo", false, "Run layered CoW filesystem snapshot and microsecond rollback demo")
 		dir := snapCmd.String("dir", ".", "Directory path to snapshot")
 		sessionID := snapCmd.String("id", "manual", "Session ID associate with snapshot")
 		step := snapCmd.Int("step", 0, "Execution step index")
 		restoreTo := snapCmd.String("restore", "", "Target directory path to restore snapshot to")
+		mermaid := snapCmd.Bool("mermaid", false, "Render Mermaid diagram of OverlayFS layer hierarchy")
+		format := snapCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := snapCmd.Bool("strict", false, "Exit with code 1 if dirty uncommitted changes or rollback failure")
 		_ = snapCmd.Parse(os.Args[2:])
+
+		if *demo || (len(os.Args) <= 2) {
+			report, err := snapshot.RunCoWDemo()
+			if err != nil {
+				log.Fatalf("CoW demo execution failed: %v", err)
+			}
+
+			switch *format {
+			case "markdown":
+				fmt.Println(snapshot.RenderCoWMarkdown(report))
+			case "json":
+				bytes, _ := json.MarshalIndent(report, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(snapshot.RenderCoWScorecard(report))
+				if *mermaid {
+					fmt.Println(snapshot.RenderCoWMermaid(report))
+				}
+				fmt.Printf("\033[1;32m✓ Layered CoW Snapshot Demo Complete.\033[0m Restored in %s with %d total layers.\n\n",
+					report.RollbackLatency, report.TotalLayers)
+			}
+
+			if *strict && report.Status != "COMMITTED" {
+				os.Exit(1)
+			}
+			return
+		}
 
 		mgr := snapshot.NewManager()
 		snap, err := mgr.CaptureWorkspace(*sessionID, *step, *dir)
@@ -1199,6 +1230,7 @@ func main() {
 			}
 			fmt.Printf("   Restored To: %s\n", *restoreTo)
 		}
+
 
 	case "cluster":
 		sessions, err := store.ListSessions()

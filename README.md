@@ -248,6 +248,26 @@ Audit agent resilience against prompt jailbreaks, malformed JSON-RPC frames, too
 ```
 
 
+
+### 17. Docker & Layered Copy-on-Write (CoW) Workspace Snapshotting (`snapshot`)
+
+Track workspace filesystem mutations with standard OCI OverlayFS whiteout tombstones, instant branch cloning, and microsecond rollback:
+
+```bash
+# Run layered CoW snapshotting and microsecond rollback demo:
+./bin/agentvcr snapshot --demo
+
+# Generate Mermaid diagram visualizing lower, upper scratch, and merged workspace views:
+./bin/agentvcr snapshot --demo --mermaid
+
+# Output GitHub Actions CI markdown audit report:
+./bin/agentvcr snapshot --demo --format markdown -strict
+
+# Capture standard workspace snapshot at step N:
+./bin/agentvcr snapshot -dir ./workspace -step 3 -id trace_1760800000
+```
+
+
 ---
 
 ## Empirical Benchmarks & Developer Utility
