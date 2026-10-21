@@ -27,6 +27,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/cluster"
 	"github.com/Noooblien/agentvcr/pkg/compact"
 	"github.com/Noooblien/agentvcr/pkg/consensus"
+	"github.com/Noooblien/agentvcr/pkg/counterfactual"
 	"github.com/Noooblien/agentvcr/pkg/dashboard"
 	"github.com/Noooblien/agentvcr/pkg/debugger"
 	"github.com/Noooblien/agentvcr/pkg/determinism"
@@ -631,6 +632,116 @@ func main() {
 		}
 
 		if *strict && (report.OverallSeverity == triage.SeverityCritical || report.OverallSeverity == triage.SeverityHigh) {
+			os.Exit(1)
+		}
+		return
+
+	case "counterfactual", "whatif":
+		cfCmd := flag.NewFlagSet("counterfactual", flag.ExitOnError)
+		demo := cfCmd.Bool("demo", false, "Run multi-scenario counterfactual what-if demonstration suite")
+		sessionID := cfCmd.String("id", "", "Trace Session ID to branch and simulate")
+		step := cfCmd.Int("step", 2, "Branch step index for what-if intervention")
+		mType := cfCmd.String("type", "tool", "Mutation type: tool | arg | mock | steer")
+		targetTool := cfCmd.String("tool", "", "Target tool name to intercept")
+		replaceTool := cfCmd.String("replace", "", "Replacement tool name for tool substitution")
+		argsJSON := cfCmd.String("args", "{}", "JSON string of overridden arguments")
+		steerPrompt := cfCmd.String("steer", "", "Human steering prompt text")
+		mermaid := cfCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of divergent branches")
+		format := cfCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := cfCmd.Bool("strict", false, "Exit with code 1 if counterfactual caused regression failure")
+		_ = cfCmd.Parse(os.Args[2:])
+
+		sim := counterfactual.NewSimulator()
+
+		if *demo || (*sessionID == "" && len(os.Args) == 2) {
+			comparisons, summary, err := counterfactual.RunDemoSuite()
+			if err != nil {
+				log.Fatalf("Counterfactual demo execution failed: %v", err)
+			}
+
+			switch *format {
+			case "markdown":
+				fmt.Println(counterfactual.RenderMarkdownReport(comparisons, summary))
+			case "json":
+				jsonStr, _ := counterfactual.RenderJSON(comparisons)
+				fmt.Println(jsonStr)
+			default:
+				scenarios := counterfactual.DefaultDemoScenarios()
+				for i, comp := range comparisons {
+					fmt.Print(counterfactual.RenderScorecard(comp))
+					if *mermaid {
+						sc := scenarios[i]
+						branch, _, _ := sim.Simulate(sc.Baseline, sc.Mutation)
+						fmt.Println(counterfactual.RenderMermaid(comp, sc.Baseline, branch))
+					}
+				}
+				fmt.Printf("\n\033[1;32m✓ Counterfactual What-If Demo Complete.\033[0m Evaluated %d scenarios (%d resolved failures, %d net tokens saved).\n\n",
+					summary.TotalScenarios, summary.ResolvedSuccessCount, summary.NetTokensSaved)
+			}
+
+			if *strict && summary.RegressionCount > 0 {
+				os.Exit(1)
+			}
+			return
+		}
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr whatif --demo | -id <session_id> [-step <int>] [-type tool|arg|mock|steer] [--mermaid] [--format text|markdown|json]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		var parsedArgs map[string]interface{}
+		_ = json.Unmarshal([]byte(*argsJSON), &parsedArgs)
+
+		var mutType counterfactual.MutationType
+		switch *mType {
+		case "arg":
+			mutType = counterfactual.MutateArgumentOverride
+		case "mock":
+			mutType = counterfactual.MutateResponseMock
+		case "steer":
+			mutType = counterfactual.MutateSteeringPrompt
+		default:
+			mutType = counterfactual.MutateToolSubstitution
+		}
+
+		mut := counterfactual.CounterfactualMutation{
+			ID:                fmt.Sprintf("whatif_cli_%d", time.Now().Unix()),
+			Name:              fmt.Sprintf("What-If Step %d Intervention", *step),
+			BranchStep:        *step,
+			Type:              mutType,
+			TargetTool:        *targetTool,
+			ReplacementTool:   *replaceTool,
+			ArgumentOverrides: parsedArgs,
+			SteeringPrompt:    *steerPrompt,
+		}
+
+		branch, comp, err := sim.Simulate(session, mut)
+		if err != nil {
+			log.Fatalf("Simulation error: %v", err)
+		}
+
+		switch *format {
+		case "markdown":
+			fmt.Println(counterfactual.RenderMarkdownReport([]*counterfactual.BranchComparison{comp}, &counterfactual.SimulationSummary{
+				TotalScenarios: 1,
+				Comparisons:    []*counterfactual.BranchComparison{comp},
+			}))
+		case "json":
+			jsonStr, _ := counterfactual.RenderJSON([]*counterfactual.BranchComparison{comp})
+			fmt.Println(jsonStr)
+		default:
+			fmt.Print(counterfactual.RenderScorecard(comp))
+			if *mermaid {
+				fmt.Println(counterfactual.RenderMermaid(comp, session, branch))
+			}
+		}
+
+		if *strict && comp.Outcome == counterfactual.OutcomeRegressionFailure {
 			os.Exit(1)
 		}
 		return
@@ -5460,7 +5571,10 @@ func printHelp() {
 	fmt.Println("  harness     Standardized benchmark harness, SWE-bench & pass@k evaluator")
 	fmt.Println("  regress     Golden trajectory assertions, sequence alignment & continuous regression testing")
 	fmt.Println("  triage      Automated root-cause triage, causal fault localization & patch synthesizer")
+	fmt.Println("  whatif      Counterfactual trajectory replay, what-if branch simulation & divergence analyzer")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentvcr whatif --demo [--mermaid] [--format text|markdown|json] [-strict]")
+	fmt.Println("  agentvcr whatif -id trace_1760800000 -step 2 -type tool -tool remote_api -replace local_cache")
 	fmt.Println("  agentvcr triage --demo [--mermaid] [--format text|markdown|json] [-strict]")
 	fmt.Println("  agentvcr triage -id trace_1760800000")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
