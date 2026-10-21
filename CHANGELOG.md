@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Automated Root-Cause Diagnosis, Causal Fault Localization & Auto-Remediation Patch Engine (`pkg/triage`)**: Autonomous debugging and root-cause localization engine that executes backward causal slicing from runtime error events back to inciting tool invocations and LLM instructions (`agentvcr triage`).
+- **Multi-Vector Fault Categorization & OWASP Mitigation**: Detects and localizes 8 major production failure modes: `SCHEMA_MISMATCH`, `RESOURCE_EXHAUSTION` (HTTP 429), `PERMISSION_DENIED` (EACCES / restricted root system access), `RUNAWAY_LOOP` (OWASP-LLM08 identical tool loops), `TIMEOUT_FAILURE`, `NETWORK_PARTITION`, `STATE_CORRUPTION`, and `MODEL_HALLUCINATION`.
+- **Automated Corrective Patch Synthesizer**: Generates targeted remediation strategies (`SCHEMA_CORRECTION`, `EXPONENTIAL_BACKOFF`, `FALLBACK_TOOL_ROUTING`, `PATH_REDIRECTION`, `LOOP_BREAK_INTERVENTION`) with copy-paste corrective prompts and parameters ready for automated replay or prompt injection.
+- **ANSI Triage Scorecards & Mermaid Causal Fault Trees**: Colorized terminal diagnostics, Mermaid flowchart fault trees visualizing the backward slice from inciting action to failure point, and CI-compatible Markdown reports (`--demo`, `-id`, `--mermaid`, `--format`, `-strict`).
 - **Continuous Semantic Regression Detection & Golden Trajectory Assertions Engine (`pkg/regress`)**: Automated CI/CD regression guardrail evaluating candidate agent runs against golden execution baselines across tool sequences, token budgets, execution steps, and output schema contracts (`agentvcr regress`).
 - **Tool Sequence Alignment & Longest Common Subsequence (LCS)**: Computes sequence congruence, prerequisite tool fulfillment, and extraneous tool deviations without false-positive penalization.
 - **Granular Multi-Tier Assertion Engine**: Evaluates strict contracts including `FORBIDDEN_TOOLS_INVOCATION` (Critical), `MISSING_PREREQUISITE_TOOLS` (Major), `RUNAWAY_RETRY_LOOP_DETECTED` (Critical loop circuit breaker), `TOKEN_BLOAT_REGRESSION`, and `SCHEMA_KEYS_MISSING`.

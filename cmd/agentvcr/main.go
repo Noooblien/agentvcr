@@ -78,6 +78,7 @@ import (
 	"github.com/Noooblien/agentvcr/pkg/tlaplus"
 	"github.com/Noooblien/agentvcr/pkg/trace"
 	"github.com/Noooblien/agentvcr/pkg/tree"
+	"github.com/Noooblien/agentvcr/pkg/triage"
 	"github.com/Noooblien/agentvcr/pkg/tui"
 	"github.com/Noooblien/agentvcr/pkg/vision"
 	"github.com/Noooblien/agentvcr/pkg/voice"
@@ -562,6 +563,77 @@ func main() {
 			}
 			return
 		}
+
+	case "triage":
+		triageCmd := flag.NewFlagSet("triage", flag.ExitOnError)
+		demo := triageCmd.Bool("demo", false, "Run automated root-cause triage on demonstration sessions")
+		sessionID := triageCmd.String("id", "", "Trace Session ID to diagnose and localize root cause")
+		mermaid := triageCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of causal fault tree")
+		format := triageCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := triageCmd.Bool("strict", false, "Exit with code 1 if critical/high severity faults diagnosed")
+		_ = triageCmd.Parse(os.Args[2:])
+
+		engine := triage.NewTriageEngine(triage.DefaultTriageConfig())
+
+		if *demo || (*sessionID == "" && len(os.Args) == 2) {
+			reports, err := triage.RunDemoSuite()
+			if err != nil {
+				log.Fatalf("Triage demo execution failed: %v", err)
+			}
+
+			switch *format {
+			case "markdown":
+				fmt.Println(triage.RenderMarkdownReport(reports))
+			case "json":
+				bytes, _ := json.MarshalIndent(reports, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				for _, r := range reports {
+					fmt.Print(triage.RenderTriageScorecard(r))
+					if *mermaid {
+						fmt.Println(triage.RenderTriageMermaid(r))
+					}
+				}
+			}
+
+			if *strict {
+				for _, r := range reports {
+					if r.OverallSeverity == triage.SeverityCritical {
+						os.Exit(1)
+					}
+				}
+			}
+			return
+		}
+
+		if *sessionID == "" {
+			log.Fatal("Usage: agentvcr triage --demo | -id <session_id> [--mermaid] [--format text|markdown|json] [-strict]")
+		}
+
+		session, err := store.LoadSession(*sessionID)
+		if err != nil {
+			log.Fatalf("Error loading session %s: %v", *sessionID, err)
+		}
+
+		report := engine.Diagnose(session)
+
+		switch *format {
+		case "markdown":
+			fmt.Println(triage.RenderMarkdownReport([]*triage.TriageReport{report}))
+		case "json":
+			bytes, _ := json.MarshalIndent(report, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(triage.RenderTriageScorecard(report))
+			if *mermaid {
+				fmt.Println(triage.RenderTriageMermaid(report))
+			}
+		}
+
+		if *strict && (report.OverallSeverity == triage.SeverityCritical || report.OverallSeverity == triage.SeverityHigh) {
+			os.Exit(1)
+		}
+		return
 
 	case "eval":
 		evalCmd := flag.NewFlagSet("eval", flag.ExitOnError)
@@ -5387,7 +5459,10 @@ func printHelp() {
 	fmt.Println("  distill     Trajectory distillation, SFT / DPO alignment dataset synthesis")
 	fmt.Println("  harness     Standardized benchmark harness, SWE-bench & pass@k evaluator")
 	fmt.Println("  regress     Golden trajectory assertions, sequence alignment & continuous regression testing")
+	fmt.Println("  triage      Automated root-cause triage, causal fault localization & patch synthesizer")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentvcr triage --demo [--mermaid] [--format text|markdown|json] [-strict]")
+	fmt.Println("  agentvcr triage -id trace_1760800000")
 	fmt.Println("  agentvcr record --port 8088 --target https://api.openai.com")
 	fmt.Println("  agentvcr view -id trace_1760800000")
 	fmt.Println("  agentvcr regress --demo [--mermaid] [--format text|markdown|json] [-strict]")

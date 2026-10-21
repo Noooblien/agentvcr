@@ -144,6 +144,21 @@ Automate CI/CD regression testing of candidate agent trajectories against golden
 ./bin/agentvcr regress --demo --format markdown -strict
 ```
 
+### 11. Automated Root-Cause Triage & Patch Synthesizer
+
+Diagnose runtime failures with backward causal slicing and synthesize actionable remediation patches:
+
+```bash
+# Run 4-scenario automated triage demo (clean, rate limit, runaway loop, permission denied):
+./bin/agentvcr triage --demo
+
+# Generate Mermaid causal fault tree visualizing the backward slice from failure point:
+./bin/agentvcr triage --demo --mermaid
+
+# Inspect specific trajectory and emit GitHub Actions CI markdown report:
+./bin/agentvcr triage -id trace_1760800000 --format markdown -strict
+```
+
 ---
 
 ## Empirical Benchmarks & Developer Utility
@@ -182,6 +197,7 @@ Zero marketing hype. Below are empirical measurements captured directly by the A
 | `agentvcr chaos` | Empirical fault injection simulation & agent resilience testing | ANSI scorecard, Markdown report, Mermaid DAG |
 | `agentvcr flame` | Hierarchical execution flamegraph & critical path latency/token profiler | ANSI tree, Speedscope JSON, Chrome Tracing, Mermaid Gantt |
 | `agentvcr regress` | Continuous semantic regression detection & golden trajectory assertions | ANSI scorecard, Mermaid diff flowchart, CI Markdown gate |
+| `agentvcr triage` | Automated root-cause diagnosis, backward causal slicing & patch synthesizer | ANSI scorecard, Mermaid causal fault tree, Markdown report |
 | `agentvcr eval` | CI/CD assertion gates on cost, token budgets, and tool errors | Pass/fail status code for test pipelines |
 
 ---
