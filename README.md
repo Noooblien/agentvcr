@@ -195,6 +195,24 @@ Detect infinite tool recursion, ping-pong deadlocks, and argument thrashing with
 ./bin/agentvcr loopbreaker --demo --format markdown -strict
 ```
 
+### 14. Context Window Compaction Loss & Constraint Recall Profiler (`contextloss`)
+
+Audit information bleed, negative constraint inversion, and hallucinated ghost facts across long-horizon context window compactions:
+
+```bash
+# Run 4-scenario context compaction loss, constraint inversion and ghost fact demo:
+./bin/agentvcr contextloss --demo
+
+# Generate Mermaid flowchart tracking information loss across compaction stages:
+./bin/agentvcr contextloss --demo --mermaid
+
+# Audit custom original trajectory and compacted summary files:
+./bin/agentvcr contextloss -orig original.txt -compacted summary.txt
+
+# Output GitHub Actions CI markdown audit report with strict exit gate on critical context loss:
+./bin/agentvcr contextloss --demo --format markdown -strict
+```
+
 ---
 
 ## Empirical Benchmarks & Developer Utility
@@ -238,6 +256,18 @@ Zero marketing hype. Below are empirical measurements captured directly by the A
 | **Circular Web Scraping Cycle** | 3 | 2 | 100.0% | `TRIP_CIRCUIT_BREAKER` | +2,300 tok | +$0.0115 | ✅ PREEMPTED |
 | **Legitimate Batch Execution** | 1 | 0 | < 25.0% | `ALLOW` | 0 tok | $0.0000 | ✅ ALLOWED |
 
+### Context Window Compaction Degradation Benchmark (`agentvcr contextloss --demo`)
+| Compaction Scenario | Orig Tokens | Compact Tokens | Compression | Entity Recall | Constraint Fidelity | Degradation Score (CDS) | Status |
+|:--------------------|:-----------:|:--------------:|:-----------:|:-------------:|:-------------------:|:-----------------------:|:------:|
+| **Clean Database Refactor** | 30 | 20 | 1.5x | 100.0% | 100.0% | `100.0/100` | 🌟 HIGH_FIDELITY |
+| **Negative Constraint Inversion** | 21 | 13 | 1.6x | 100.0% | 30.0% | `58.0/100` | 🚨 CRITICAL_LOSS |
+| **Entity Bleed & Ghost Hallucination** | 19 | 13 | 1.5x | 0.0% | 100.0% | `42.0/100` | 🚨 CRITICAL_LOSS |
+| **Multi-Turn Handoff Bleed** | 25 | 19 | 1.3x | 29.0% | 100.0% | `71.4/100` | ⚠️ MODERATE_BLEED |
+
+- **Average Context Degradation Score**: `67.9 / 100`
+- **Average Compression Ratio**: `1.5x`
+- **Constraint Inversion Detection Accuracy**: `100.0%`
+
 ---
 
 ## Core Developer Capabilities
@@ -250,6 +280,7 @@ Zero marketing hype. Below are empirical measurements captured directly by the A
 | `agentvcr diff` | Semantic sequence alignment, AST comparison & regression shield | Diff scorecard & Mermaid execution DAG |
 | `agentvcr sentry` | Real-time trajectory anomaly sentry & circuit breaker | Tool loop & token velocity detection |
 | `agentvcr loopbreaker` | Automated reasoning cycle detector, argument thrashing & circuit breaker engine | ANSI scorecard, Mermaid cycle DAG, CI Markdown report |
+| `agentvcr contextloss` | Context window compaction degradation, constraint inversion & ghost fact profiler | ANSI scorecard, Mermaid information DAG, CI Markdown report |
 | `agentvcr determinism` | Empirical trajectory replay parity & token efficiency benchmark | ANSI scorecard, Markdown table, JSON gate |
 | `agentvcr chaos` | Empirical fault injection simulation & agent resilience testing | ANSI scorecard, Markdown report, Mermaid DAG |
 | `agentvcr flame` | Hierarchical execution flamegraph & critical path latency/token profiler | ANSI tree, Speedscope JSON, Chrome Tracing, Mermaid Gantt |
